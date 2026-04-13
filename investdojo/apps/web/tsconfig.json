@@ -1,0 +1,46 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@investdojo/core": [
+        "../../packages/core/src"
+      ],
+      "@investdojo/core/*": [
+        "../../packages/core/src/*"
+      ],
+      "@investdojo/ui": [
+        "../../packages/ui/src"
+      ],
+      "@investdojo/ui/*": [
+        "../../packages/ui/src/*"
+      ],
+      "@investdojo/api": [
+        "../../packages/api/src"
+      ],
+      "@investdojo/api/*": [
+        "../../packages/api/src/*"
+      ]
+    },
+    "allowJs": true,
+    "noEmit": true,
+    "incremental": true,
+    "jsx": "preserve"
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

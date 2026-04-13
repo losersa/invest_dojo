@@ -1,0 +1,24 @@
+{
+  "name": "investdojo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "InvestDojo - 模拟炒股 × 量化回测 × 财报分析",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "type-check": "turbo run type-check",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "dev:web": "turbo run dev --filter=@investdojo/web",
+    "dev:server": "turbo run dev --filter=@investdojo/server",
+    "build:web": "turbo run build --filter=@investdojo/web",
+    "build:server": "turbo run build --filter=@investdojo/server"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "turbo": "^2.9.6"
+  }
+}

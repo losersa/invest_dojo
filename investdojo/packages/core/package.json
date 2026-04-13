@@ -1,0 +1,36 @@
+{
+  "name": "@investdojo/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./simulation": {
+      "import": "./dist/simulation/index.js",
+      "types": "./dist/simulation/index.d.ts"
+    },
+    "./sync": {
+      "import": "./dist/sync/index.js",
+      "types": "./dist/sync/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "nanoid": "^5.0.0",
+    "immer": "^10.0.0"
+  }
+}

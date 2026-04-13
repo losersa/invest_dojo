@@ -1,0 +1,23 @@
+# dependencies
+node_modules
+.pnpm-store
+
+# build outputs
+dist
+.next
+.turbo
+out
+
+# env files
+.env
+.env.local
+.env.*.local
+
+# platform builds
+src-tauri/target
+android
+ios
+
+# misc
+.DS_Store
+*.tsbuildinfo

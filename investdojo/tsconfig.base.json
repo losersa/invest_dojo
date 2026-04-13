@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "paths": {
+      "@investdojo/core/*": ["./packages/core/src/*"],
+      "@investdojo/ui/*": ["./packages/ui/src/*"],
+      "@investdojo/api/*": ["./packages/api/src/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist", ".next", ".turbo"]
+}
