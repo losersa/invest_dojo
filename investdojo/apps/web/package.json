@@ -10,26 +10,32 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@investdojo/api": "workspace:*",
     "@investdojo/core": "workspace:*",
     "@investdojo/ui": "workspace:*",
-    "@investdojo/api": "workspace:*",
+    "@supabase/ssr": "^0.10.2",
+    "@supabase/supabase-js": "^2.49.0",
+    "@tanstack/react-query": "^5.62.0",
+    "clsx": "^2.1.0",
+    "lightweight-charts": "^4.2.0",
+    "lucide-react": "^0.460.0",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "zustand": "^5.0.0",
-    "@tanstack/react-query": "^5.62.0",
-    "lightweight-charts": "^4.2.0",
-    "lucide-react": "^0.460.0",
-    "clsx": "^2.1.0",
-    "tailwind-merge": "^2.5.0"
+    "tailwind-merge": "^2.5.0",
+    "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "typescript": "^5.5.0",
+    "jsdom": "^29.0.2",
+    "postcss": "^8.4.0",
     "tailwindcss": "^4.0.0",
-    "@tailwindcss/postcss": "^4.0.0",
-    "postcss": "^8.4.0"
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.4"
   }
 }

@@ -25,3 +25,16 @@
 - 技术方案: `/Users/xxxixi/project/finance/InvestDojo_技术架构方案.md`
 - 开发指南: `/Users/xxxixi/project/finance/investdojo/docs/开发指南.md`
 - 代码根目录: `/Users/xxxixi/project/finance/investdojo/`
+- 数据采集脚本: `investdojo/scripts/seed_data.py` + `seed_baostock.py`
+
+## Supabase 配置（2026-04-13 接入）
+- 项目 ID: `adqznqsciqtepzimcvsg`
+- URL: `https://adqznqsciqtepzimcvsg.supabase.co`
+- 表结构: scenarios(场景), klines(K线), news(新闻)
+- 数据量: 4场景 / 2996条K线 / 49条新闻（真实前复权A股日K数据）
+- 数据源: AKShare + BaoStock
+- 环境变量: `apps/web/.env.local` + `apps/server/.env`
+
+## 开发环境
+- pnpm 通过 fnm 管理: `eval "$(/opt/homebrew/bin/fnm env --use-on-cd --shell zsh)"`
+- 终端启动需要先初始化 fnm 环境

@@ -7,6 +7,7 @@
 import React from "react";
 import Link from "next/link";
 import type { ScenarioMeta } from "@investdojo/core";
+import { UserNav } from "@/components/UserNav";
 
 // Mock 场景列表（后续从 API 拉取）
 const SCENARIOS: ScenarioMeta[] = [
@@ -76,9 +77,12 @@ export function ScenarioListPage() {
       {/* 顶部 */}
       <div className="border-b border-gray-800 bg-gray-900/50">
         <div className="max-w-6xl mx-auto px-4 py-6">
-          <Link href="/" className="text-sm text-gray-500 hover:text-gray-300 mb-2 inline-block">
-            ← 返回首页
-          </Link>
+          <div className="flex items-center justify-between mb-2">
+            <Link href="/" className="text-sm text-gray-500 hover:text-gray-300">
+              ← 返回首页
+            </Link>
+            <UserNav />
+          </div>
           <h1 className="text-2xl font-bold text-white">🎮 历史情景模拟</h1>
           <p className="text-sm text-gray-400 mt-1">
             选择一个历史场景，回到关键时刻重新做出投资决策

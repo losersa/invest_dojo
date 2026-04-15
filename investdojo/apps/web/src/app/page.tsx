@@ -1,8 +1,14 @@
 import Link from "next/link";
+import { UserNav } from "@/components/UserNav";
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-950">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-950 relative">
+      {/* 右上角用户导航 */}
+      <div className="absolute top-4 right-4 z-50">
+        <UserNav />
+      </div>
+
       {/* Hero */}
       <div className="text-center mb-12">
         <h1 className="text-5xl font-bold mb-4">

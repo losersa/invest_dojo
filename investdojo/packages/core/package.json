@@ -27,10 +27,11 @@
   },
   "devDependencies": {
     "tsup": "^8.0.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.4"
   },
   "dependencies": {
-    "nanoid": "^5.0.0",
-    "immer": "^10.0.0"
+    "immer": "^10.0.0",
+    "nanoid": "^5.0.0"
   }
 }
