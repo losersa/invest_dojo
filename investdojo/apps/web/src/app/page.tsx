@@ -3,62 +3,109 @@ import { UserNav } from "@/components/UserNav";
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-950 relative">
-      {/* 右上角用户导航 */}
-      <div className="absolute top-4 right-4 z-50">
-        <UserNav />
-      </div>
-
-      {/* Hero */}
-      <div className="text-center mb-12">
-        <h1 className="text-5xl font-bold mb-4">
-          <span className="text-6xl mr-3">🥋</span>
-          <span className="bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">
-            InvestDojo
-          </span>
-        </h1>
-        <p className="text-xl text-gray-400 mb-2">投资道场</p>
-        <p className="text-sm text-gray-500 max-w-md mx-auto">
-          在历史的关键时刻重新做出投资决策 — 模拟炒股 × 量化回测 × 财报分析
-        </p>
-      </div>
-
-      {/* 三大模块入口 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl w-full px-4">
-        <Link
-          href="/simulation"
-          className="group rounded-xl border border-gray-800 bg-gray-900/50 p-6 hover:border-blue-500/50 hover:bg-gray-900 transition-all"
-        >
-          <div className="text-3xl mb-3">🎮</div>
-          <h2 className="text-lg font-bold text-white mb-1 group-hover:text-blue-400 transition-colors">
-            历史情景模拟
-          </h2>
-          <p className="text-sm text-gray-500">
-            回到2020年新冠、2015年牛熊转换等关键时刻，用真实历史数据模拟交易
-          </p>
+    <div className="min-h-screen bg-rc-bg">
+      {/* ---- Navigation ---- */}
+      <nav className="rc-nav max-w-[1200px] mx-auto">
+        <Link href="/" className="text-[20px] font-semibold text-rc-text-primary tracking-[0.2px]">
+          InvestDojo
         </Link>
+        <div className="hidden md:flex items-center gap-6">
+          <Link href="/simulation" className="rc-nav-link">历史模拟</Link>
+          <span className="text-rc-text-dim cursor-not-allowed text-[16px] tracking-[0.3px]">量化回测</span>
+          <span className="text-rc-text-dim cursor-not-allowed text-[16px] tracking-[0.3px]">财报分析</span>
+        </div>
+        <UserNav />
+      </nav>
 
-        <div className="rounded-xl border border-gray-800 bg-gray-900/30 p-6 opacity-60 cursor-not-allowed">
-          <div className="text-3xl mb-3">📊</div>
-          <h2 className="text-lg font-bold text-gray-400 mb-1">AI 量化回测</h2>
-          <p className="text-sm text-gray-600">
-            用自然语言描述策略，AI 生成代码并回测 — 即将推出
+      {/* ---- Hero Section ---- */}
+      <section className="relative overflow-hidden py-[100px] md:py-[140px] px-6">
+        {/* Decorative red diagonal stripe — Raycast signature */}
+        <div
+          className="absolute top-0 right-0 w-[400px] h-[600px] opacity-[0.04] pointer-events-none"
+          style={{
+            background: "repeating-linear-gradient(-45deg, #FF6363, #FF6363 2px, transparent 2px, transparent 20px)",
+          }}
+        />
+
+        <div className="relative z-10 max-w-[1200px] mx-auto text-center">
+          <h1 className="text-display-hero text-white max-w-[800px] mx-auto">
+            在历史的关键时刻
+            <br />
+            重新做出投资决策
+          </h1>
+          <p className="mt-6 text-body-lg text-rc-text-secondary max-w-[560px] mx-auto">
+            模拟炒股 × 量化回测 × 财报分析 — 用真实历史数据训练你的投资直觉
+          </p>
+          <div className="flex items-center gap-4 justify-center mt-10">
+            <Link href="/simulation" className="rc-btn-primary text-[16px] px-8 py-3">
+              开始模拟
+            </Link>
+            <Link href="#modules" className="rc-btn-secondary text-[16px] px-6 py-3">
+              了解更多
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ---- Module Cards Section ---- */}
+      <section id="modules" className="max-w-[1200px] mx-auto px-6 pb-[120px]">
+        <h2 className="text-section-heading text-rc-text-secondary mb-10">三大核心模块</h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Card 1: 历史模拟 — Active */}
+          <Link
+            href="/simulation"
+            className="group rc-card-feature transition-all duration-150 hover:translate-y-[-2px]"
+          >
+            <div className="text-3xl mb-5">🎮</div>
+            <h3 className="text-[20px] font-medium text-white mb-2 tracking-[0.2px] group-hover:text-rc-blue transition-colors duration-150">
+              历史情景模拟
+            </h3>
+            <p className="text-caption text-rc-text-secondary leading-relaxed">
+              回到 2020 年新冠、2015 年牛熊转换等关键时刻，用真实历史数据模拟交易
+            </p>
+            <span className="inline-block mt-4 text-caption text-rc-blue group-hover:underline">
+              立即体验 →
+            </span>
+          </Link>
+
+          {/* Card 2: 量化回测 — Coming Soon */}
+          <div className="rc-card opacity-50">
+            <div className="text-3xl mb-5">📊</div>
+            <h3 className="text-[20px] font-medium text-rc-text-dim mb-2 tracking-[0.2px]">
+              AI 量化回测
+            </h3>
+            <p className="text-caption text-rc-text-dim leading-relaxed">
+              用自然语言描述策略，AI 生成代码并回测
+            </p>
+            <span className="rc-badge rc-badge-info mt-4 text-[12px]">COMING SOON</span>
+          </div>
+
+          {/* Card 3: 财报分析 — Coming Soon */}
+          <div className="rc-card opacity-50">
+            <div className="text-3xl mb-5">📋</div>
+            <h3 className="text-[20px] font-medium text-rc-text-dim mb-2 tracking-[0.2px]">
+              AI 财报分析
+            </h3>
+            <p className="text-caption text-rc-text-dim leading-relaxed">
+              输入股票代码，秒出六维分析 + 同行对比
+            </p>
+            <span className="rc-badge rc-badge-info mt-4 text-[12px]">COMING SOON</span>
+          </div>
+        </div>
+      </section>
+
+      {/* ---- Footer ---- */}
+      <footer className="border-t border-rc-border py-16 px-6">
+        <div className="max-w-[1200px] mx-auto text-center">
+          <p className="text-caption text-rc-text-muted leading-relaxed max-w-lg mx-auto">
+            本平台仅为教育工具，不构成任何投资建议。模拟交易使用历史数据，不涉及真实资金。
+          </p>
+          <p className="text-[12px] text-rc-text-dim mt-4 font-rc-mono">
+            © 2026 INVESTDOJO. ALL RIGHTS RESERVED.
           </p>
         </div>
-
-        <div className="rounded-xl border border-gray-800 bg-gray-900/30 p-6 opacity-60 cursor-not-allowed">
-          <div className="text-3xl mb-3">📋</div>
-          <h2 className="text-lg font-bold text-gray-400 mb-1">AI 财报分析</h2>
-          <p className="text-sm text-gray-600">
-            输入股票代码，秒出六维分析 + 同行对比 — 即将推出
-          </p>
-        </div>
-      </div>
-
-      {/* 免责声明 */}
-      <p className="mt-12 text-xs text-gray-700 max-w-md text-center">
-        本平台仅为教育工具，不构成任何投资建议。模拟交易使用历史数据，不涉及真实资金。
-      </p>
+      </footer>
     </div>
   );
 }

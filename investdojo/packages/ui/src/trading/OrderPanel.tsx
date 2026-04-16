@@ -1,7 +1,8 @@
 "use client";
 
 // ============================================================
-// 交易面板组件 — 买入 / 卖出 / 快捷下单
+// 交易面板 — Raycast Design System
+// Sharp 4px/8px geometry + midnight blue surfaces
 // ============================================================
 
 import React, { useState, useCallback } from "react";
@@ -10,103 +11,80 @@ import { TRADING_RULES } from "@investdojo/core";
 import { cn, formatMoney, formatPercent, getPriceColor } from "../lib/utils";
 
 export interface OrderPanelProps {
-  /** 当前选中股票代码 */
   symbol: string;
-  /** 股票名称 */
   symbolName: string;
-  /** 当日 K 线（获取当前价格） */
   currentKline: KLine | null;
-  /** 该股票的持仓信息 */
   position: Position | null;
-  /** 可用现金 */
   availableCash: number;
-  /** 买入回调 */
   onBuy: (symbol: string, symbolName: string, quantity: number) => void;
-  /** 卖出回调 */
   onSell: (symbol: string, symbolName: string, quantity: number) => void;
 }
 
 export function OrderPanel({
-  symbol,
-  symbolName,
-  currentKline,
-  position,
-  availableCash,
-  onBuy,
-  onSell,
+  symbol, symbolName, currentKline, position, availableCash, onBuy, onSell,
 }: OrderPanelProps) {
   const [direction, setDirection] = useState<"buy" | "sell">("buy");
   const [quantity, setQuantity] = useState<number>(100);
 
   const currentPrice = currentKline?.close ?? 0;
   const lotSize = TRADING_RULES.LOT_SIZE;
-
-  // 可买数量（最大手数）
   const maxBuyQuantity = Math.floor(availableCash / currentPrice / lotSize) * lotSize;
-  // 可卖数量
   const maxSellQuantity = position?.availableQuantity ?? 0;
-
   const maxQuantity = direction === "buy" ? maxBuyQuantity : maxSellQuantity;
+  const changePercent = currentKline?.changePercent ?? 0;
 
   const handleSubmit = useCallback(() => {
     if (quantity <= 0 || !currentKline) return;
-    if (direction === "buy") {
-      onBuy(symbol, symbolName, quantity);
-    } else {
-      onSell(symbol, symbolName, quantity);
-    }
+    if (direction === "buy") onBuy(symbol, symbolName, quantity);
+    else onSell(symbol, symbolName, quantity);
   }, [direction, quantity, symbol, symbolName, currentKline, onBuy, onSell]);
 
-  // 快捷比例按钮
   const quickRatios = [
     { label: "1/4", ratio: 0.25 },
     { label: "1/3", ratio: 0.33 },
     { label: "1/2", ratio: 0.5 },
-    { label: "全仓", ratio: 1 },
+    { label: "ALL", ratio: 1 },
   ];
 
   const handleQuickRatio = (ratio: number) => {
-    const raw = Math.floor((maxQuantity * ratio) / lotSize) * lotSize;
-    setQuantity(Math.max(raw, 0));
+    setQuantity(Math.max(Math.floor((maxQuantity * ratio) / lotSize) * lotSize, 0));
   };
 
   if (!currentKline) {
     return (
-      <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
-        <p className="text-sm text-gray-400">请选择股票查看交易信息</p>
+      <div className="rc-card p-5">
+        <p className="text-[13px] text-rc-text-muted tracking-[0.2px]">请选择股票查看交易信息</p>
       </div>
     );
   }
 
-  const changePercent = currentKline.changePercent;
-
   return (
-    <div className="rounded-lg bg-gray-800/50 border border-gray-700 overflow-hidden">
-      {/* 股票信息头 */}
-      <div className="px-4 py-3 border-b border-gray-700">
+    <div className="rc-card p-0 overflow-hidden">
+      {/* Stock Header */}
+      <div className="px-5 py-4 border-b border-rc-border">
         <div className="flex items-baseline gap-2">
-          <span className="text-lg font-bold text-white">{symbolName}</span>
-          <span className="text-sm text-gray-400">{symbol}</span>
+          <span className="text-[18px] font-medium text-white tracking-[-0.18px]">{symbolName}</span>
+          <span className="text-[11px] text-rc-text-muted font-rc-mono">{symbol}</span>
         </div>
         <div className="flex items-baseline gap-3 mt-1">
-          <span className={cn("text-2xl font-mono font-bold", getPriceColor(changePercent))}>
+          <span className={cn("text-[24px] font-mono font-medium tracking-[-0.42px]", getPriceColor(changePercent))}>
             ¥{currentPrice.toFixed(2)}
           </span>
-          <span className={cn("text-sm font-mono", getPriceColor(changePercent))}>
+          <span className={cn("text-[13px] font-mono", getPriceColor(changePercent))}>
             {formatPercent(changePercent)}
           </span>
         </div>
       </div>
 
-      {/* 买入/卖出切换 */}
-      <div className="flex border-b border-gray-700">
+      {/* Buy/Sell Toggle — sharp 4px segments */}
+      <div className="flex p-1 mx-4 mt-3 bg-rc-surface-card rounded-[6px]">
         <button
           onClick={() => setDirection("buy")}
           className={cn(
-            "flex-1 py-2 text-center font-medium transition-colors",
+            "flex-1 py-1.5 text-[13px] font-medium rounded-[6px] transition-all duration-150 text-center tracking-[0.2px]",
             direction === "buy"
-              ? "bg-red-500/20 text-red-400 border-b-2 border-red-500"
-              : "text-gray-400 hover:text-gray-200",
+              ? "bg-stock-up text-white"
+              : "text-rc-text-secondary hover:text-white",
           )}
         >
           买入
@@ -114,41 +92,39 @@ export function OrderPanel({
         <button
           onClick={() => setDirection("sell")}
           className={cn(
-            "flex-1 py-2 text-center font-medium transition-colors",
+            "flex-1 py-1.5 text-[13px] font-medium rounded-[6px] transition-all duration-150 text-center tracking-[0.2px]",
             direction === "sell"
-              ? "bg-green-500/20 text-green-400 border-b-2 border-green-500"
-              : "text-gray-400 hover:text-gray-200",
+              ? "bg-stock-down text-white"
+              : "text-rc-text-secondary hover:text-white",
           )}
         >
           卖出
         </button>
       </div>
 
-      {/* 下单区域 */}
-      <div className="p-4 space-y-4">
-        {/* 委托价格（当前价） */}
+      {/* Order Area */}
+      <div className="p-4 space-y-3.5">
+        {/* Price */}
         <div>
-          <label className="text-xs text-gray-400 mb-1 block">委托价格</label>
-          <div className="flex items-center bg-gray-900 rounded px-3 py-2 border border-gray-600">
-            <span className="text-white font-mono">¥{currentPrice.toFixed(2)}</span>
-            <span className="ml-2 text-xs text-gray-500">（市价委托）</span>
+          <label className="block text-[10px] text-rc-text-muted mb-1 ml-0.5 font-rc-mono">PRICE</label>
+          <div className="flex items-center bg-rc-surface-card rounded-[6px] px-3 py-2.5 border border-rc-border">
+            <span className="text-[14px] text-white font-mono tracking-[0.2px]">¥{currentPrice.toFixed(2)}</span>
+            <span className="ml-auto rc-badge text-[10px]">MARKET</span>
           </div>
         </div>
 
-        {/* 委托数量 */}
+        {/* Quantity */}
         <div>
           <div className="flex justify-between items-center mb-1">
-            <label className="text-xs text-gray-400">
-              委托数量<span className="text-gray-500">（最小 {lotSize} 股）</span>
-            </label>
-            <span className="text-xs text-gray-500">
-              可{direction === "buy" ? "买" : "卖"} {maxQuantity} 股
+            <label className="text-[10px] text-rc-text-muted ml-0.5 font-rc-mono">QUANTITY</label>
+            <span className="text-[11px] text-rc-text-muted tracking-[0.2px]">
+              可{direction === "buy" ? "买" : "卖"} {maxQuantity}
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => setQuantity(Math.max(0, quantity - lotSize))}
-              className="w-8 h-8 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 flex items-center justify-center"
+              className="w-9 h-9 rounded-[6px] bg-rc-surface-card text-rc-text-secondary hover:bg-rc-surface-card flex items-center justify-center text-[16px] transition-all duration-150"
             >
               −
             </button>
@@ -156,57 +132,55 @@ export function OrderPanel({
               type="number"
               value={quantity}
               onChange={(e) => setQuantity(Math.max(0, Math.floor(Number(e.target.value) / lotSize) * lotSize))}
-              className="flex-1 bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white text-center font-mono"
+              className="flex-1 bg-rc-surface-card border border-rc-border rounded-[6px] px-3 py-2 text-white text-center font-mono text-[14px] tracking-[0.2px] focus:outline-none focus:border-rc-blue transition-all duration-150"
               step={lotSize}
               min={0}
               max={maxQuantity}
             />
             <button
               onClick={() => setQuantity(Math.min(maxQuantity, quantity + lotSize))}
-              className="w-8 h-8 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 flex items-center justify-center"
+              className="w-9 h-9 rounded-[6px] bg-rc-surface-card text-rc-text-secondary hover:bg-rc-surface-card flex items-center justify-center text-[16px] transition-all duration-150"
             >
               +
             </button>
           </div>
         </div>
 
-        {/* 快捷比例 */}
-        <div className="flex gap-2">
+        {/* Quick Ratios */}
+        <div className="flex gap-1.5">
           {quickRatios.map(({ label, ratio }) => (
             <button
               key={label}
               onClick={() => handleQuickRatio(ratio)}
-              className="flex-1 py-1.5 text-xs rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+              className="flex-1 py-1.5 text-[11px] rounded-[6px] bg-white/[0.04] border border-rc-border text-rc-text-secondary hover:bg-white/[0.08] hover:text-white transition-all duration-150 font-rc-mono"
             >
               {label}
             </button>
           ))}
         </div>
 
-        {/* 预估金额 */}
-        <div className="flex justify-between text-sm text-gray-400">
-          <span>预估金额</span>
-          <span className="text-white font-mono">
-            {formatMoney(currentPrice * quantity)}
-          </span>
+        {/* Summary */}
+        <div className="space-y-2 pt-1">
+          <div className="flex justify-between text-[13px] tracking-[0.2px]">
+            <span className="text-rc-text-secondary">预估金额</span>
+            <span className="text-white font-mono">{formatMoney(currentPrice * quantity)}</span>
+          </div>
+          <div className="flex justify-between text-[13px] tracking-[0.2px]">
+            <span className="text-rc-text-secondary">可用资金</span>
+            <span className="text-white font-mono">{formatMoney(availableCash)}</span>
+          </div>
         </div>
 
-        {/* 可用资金 */}
-        <div className="flex justify-between text-sm text-gray-400">
-          <span>可用资金</span>
-          <span className="text-white font-mono">{formatMoney(availableCash)}</span>
-        </div>
-
-        {/* 下单按钮 */}
+        {/* Submit */}
         <button
           onClick={handleSubmit}
           disabled={quantity <= 0 || quantity > maxQuantity}
           className={cn(
-            "w-full py-3 rounded-lg font-bold text-white transition-all",
+            "w-full py-3 rounded-[6px] text-[15px] font-medium text-white transition-all duration-150 tracking-[0.2px]",
             direction === "buy"
-              ? "bg-red-500 hover:bg-red-600 disabled:bg-red-500/30"
-              : "bg-green-500 hover:bg-green-600 disabled:bg-green-500/30",
-            "disabled:cursor-not-allowed disabled:text-gray-500",
+              ? "bg-stock-up hover:opacity-60 disabled:opacity-30"
+              : "bg-stock-down hover:opacity-60 disabled:opacity-30",
+            "disabled:cursor-not-allowed",
           )}
         >
           {direction === "buy"
@@ -215,26 +189,26 @@ export function OrderPanel({
         </button>
       </div>
 
-      {/* 持仓信息 */}
+      {/* Position Info */}
       {position && (
-        <div className="px-4 py-3 border-t border-gray-700 bg-gray-900/50">
-          <div className="text-xs text-gray-400 mb-2">当前持仓</div>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div>
-              <span className="text-gray-500">持仓</span>
-              <span className="ml-2 text-white font-mono">{position.quantity}股</span>
+        <div className="px-5 py-3 border-t border-rc-border bg-rc-surface-100">
+          <div className="text-[10px] text-rc-text-muted mb-2 font-rc-mono">POSITION</div>
+          <div className="grid grid-cols-2 gap-y-1.5 gap-x-4 text-[12px] tracking-[0.2px]">
+            <div className="flex justify-between">
+              <span className="text-rc-text-muted">持仓</span>
+              <span className="text-white font-mono">{position.quantity}股</span>
             </div>
-            <div>
-              <span className="text-gray-500">可卖</span>
-              <span className="ml-2 text-white font-mono">{position.availableQuantity}股</span>
+            <div className="flex justify-between">
+              <span className="text-rc-text-muted">可卖</span>
+              <span className="text-white font-mono">{position.availableQuantity}股</span>
             </div>
-            <div>
-              <span className="text-gray-500">成本</span>
-              <span className="ml-2 text-white font-mono">¥{position.avgCost.toFixed(2)}</span>
+            <div className="flex justify-between">
+              <span className="text-rc-text-muted">成本</span>
+              <span className="text-white font-mono">¥{position.avgCost.toFixed(2)}</span>
             </div>
-            <div>
-              <span className="text-gray-500">盈亏</span>
-              <span className={cn("ml-2 font-mono", getPriceColor(position.profitLoss))}>
+            <div className="flex justify-between">
+              <span className="text-rc-text-muted">盈亏</span>
+              <span className={cn("font-mono", getPriceColor(position.profitLoss))}>
                 {formatMoney(position.profitLoss)}
               </span>
             </div>

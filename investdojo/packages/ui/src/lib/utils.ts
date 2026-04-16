@@ -23,16 +23,16 @@ export function formatPercent(value: number, precision = 2): string {
   return `${sign}${value.toFixed(precision)}%`;
 }
 
-/** 涨跌颜色（中国习惯：涨红跌绿） */
+/** 涨跌颜色（A 股习惯：涨红跌绿 — Raycast Red/Green） */
 export function getPriceColor(value: number): string {
-  if (value > 0) return "text-red-500";
-  if (value < 0) return "text-green-500";
-  return "text-gray-500";
+  if (value > 0) return "text-stock-up";
+  if (value < 0) return "text-stock-down";
+  return "text-stock-flat";
 }
 
 /** 涨跌背景色 */
 export function getPriceBgColor(value: number): string {
-  if (value > 0) return "bg-red-500/10";
-  if (value < 0) return "bg-green-500/10";
-  return "bg-gray-500/10";
+  if (value > 0) return "bg-stock-up-bg";
+  if (value < 0) return "bg-stock-down-bg";
+  return "bg-rc-surface-100";
 }

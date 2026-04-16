@@ -1,1 +1,404 @@
 @import "tailwindcss";
+
+/* ============================================================
+   InvestDojo — Raycast Design System Global Styles
+   Precision dark-mode: near-black blue-tinted surfaces,
+   multi-layer macOS-native shadows, Inter +0.2px spacing,
+   Raycast Red (#FF6363) as punctuation only.
+   ============================================================ */
+
+/* ---- Raycast Design System CSS Variables ---- */
+@theme {
+  /* ── Primary Triad ── */
+  --color-rc-bg: #07080a;           /* Page canvas — near-black blue-tinted */
+  --color-rc-white: #ffffff;
+  --color-rc-red: #FF6363;          /* Punctuation accent — hero stripes, errors ONLY */
+
+  /* ── Interactive & Semantic ── */
+  --color-rc-blue: #55b3ff;         /* Interactive: links, focus, selected, info */
+  --color-rc-green: #5fc992;        /* Success states */
+  --color-rc-yellow: #ffbc33;       /* Warning states */
+
+  /* ── Surface Hierarchy ── */
+  --color-rc-surface-100: #101111;  /* Cards, elevated panels */
+  --color-rc-surface-card: #1b1c1e; /* Badge backgrounds, elevated containers */
+  --color-rc-surface-input: #07080a;/* Input field backgrounds */
+  --color-rc-btn-fg: #18191a;       /* Dark text on white/light buttons */
+
+  /* ── Text Hierarchy ── */
+  --color-rc-text-primary: #f9f9f9;   /* Near-white — headings, emphasis */
+  --color-rc-text-secondary: #cecece; /* Descriptions, body */
+  --color-rc-text-tertiary: #c0c0c0;  /* Subdued labels */
+  --color-rc-text-muted: #9c9c9d;     /* Links default, secondary nav */
+  --color-rc-text-dim: #6a6b6c;       /* Disabled, low-emphasis */
+  --color-rc-text-dark: #434345;       /* Inactive nav, muted borders */
+
+  /* ── Borders ── */
+  --color-rc-border: #252829;              /* Standard border: hsl(195,5%,15%) */
+  --color-rc-border-strong: #2f3031;       /* Separators, table borders */
+  --color-rc-border-subtle: rgba(255, 255, 255, 0.06); /* Card containment */
+  --color-rc-border-input: rgba(255, 255, 255, 0.08);  /* Input fields */
+  --color-rc-border-btn: rgba(255, 255, 255, 0.1);     /* Button borders */
+
+  /* ── A-Share Colors (涨红跌绿) ── */
+  --color-stock-up: #FF6363;        /* Raycast Red — also stock up */
+  --color-stock-down: #5fc992;      /* Raycast Green */
+  --color-stock-flat: #6a6b6c;
+  --color-stock-up-bg: rgba(255, 99, 99, 0.12);
+  --color-stock-down-bg: rgba(95, 201, 146, 0.12);
+
+  /* ── Border Radius Scale ── */
+  --radius-sm: 6px;     /* Buttons, badges (workhorse) */
+  --radius-md: 8px;     /* Inputs */
+  --radius-card: 12px;  /* Standard cards */
+  --radius-lg: 16px;    /* Large cards */
+  --radius-xl: 20px;    /* Hero cards */
+  --radius-pill: 86px;  /* Pill CTAs */
+}
+
+/* ---- Base Reset ---- */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--color-rc-bg);
+  color: var(--color-rc-text-primary);
+  line-height: 1.15;
+  letter-spacing: 0.2px;         /* Raycast signature: POSITIVE spacing */
+  font-weight: 500;              /* 500 baseline — not 400 */
+  font-feature-settings: 'calt', 'kern', 'liga', 'ss03';
+}
+
+/* ---- Mono Font (Code, Labels) ---- */
+.font-rc-mono {
+  font-family: 'GeistMono', 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+  letter-spacing: 0.3px;
+  font-weight: 500;
+}
+
+/* ---- Typography Scale ---- */
+.text-display-hero {
+  font-size: clamp(36px, 5vw, 64px);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: 0px;
+  font-feature-settings: 'calt', 'kern', 'ss03';  /* liga 0 for hero */
+}
+
+.text-section-display {
+  font-size: clamp(28px, 4vw, 56px);
+  font-weight: 400;
+  line-height: 1.10;
+  letter-spacing: 0.2px;
+}
+
+.text-section-heading {
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: 0.2px;
+}
+
+.text-body {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.50;
+  letter-spacing: 0.2px;
+}
+
+.text-body-lg {
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.40;
+  letter-spacing: 0.2px;
+}
+
+.text-caption {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: 0.2px;
+}
+
+.text-button {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  line-height: 1.15;
+}
+
+/* ---- Raycast Cards ---- */
+
+/* Standard Card — double-ring technique */
+.rc-card {
+  background: var(--color-rc-surface-100);
+  border: 1px solid var(--color-rc-border-subtle);
+  border-radius: var(--radius-card);
+  padding: 24px;
+}
+
+/* Elevated Card */
+.rc-card-elevated {
+  background: var(--color-rc-surface-100);
+  border: none;
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  box-shadow:
+    rgb(27, 28, 30) 0px 0px 0px 1px,
+    rgb(7, 8, 10) 0px 0px 0px 1px inset;
+}
+
+/* Feature Card with warm glow */
+.rc-card-feature {
+  background: var(--color-rc-surface-100);
+  border: 1px solid var(--color-rc-border-subtle);
+  border-radius: var(--radius-xl);
+  padding: 32px;
+  box-shadow:
+    rgba(215, 201, 175, 0.05) 0px 0px 20px 5px,
+    rgb(27, 28, 30) 0px 0px 0px 1px;
+}
+
+/* ---- Raycast Buttons ---- */
+
+/* Primary Pill — translucent white, pill-shaped */
+.rc-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: hsla(0, 0%, 100%, 0.815);
+  color: var(--color-rc-btn-fg);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  line-height: 1.15;
+  padding: 10px 24px;
+  border: none;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: opacity 0.15s ease, background 0.15s ease;
+  font-feature-settings: 'calt', 'kern', 'liga', 'ss03';
+}
+.rc-btn-primary:hover {
+  background: hsl(0, 0%, 100%);
+  opacity: 0.9;
+}
+
+/* Secondary Button — bordered, rectangular */
+.rc-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  line-height: 1.15;
+  padding: 10px 20px;
+  border: 1px solid var(--color-rc-border-btn);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  box-shadow: rgba(0, 0, 0, 0.03) 0px 7px 3px;
+  font-feature-settings: 'calt', 'kern', 'liga', 'ss03';
+}
+.rc-btn-secondary:hover { opacity: 0.6; }
+
+/* Ghost Button */
+.rc-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+  color: var(--color-rc-text-dim);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  line-height: 1.15;
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: opacity 0.15s ease, color 0.15s ease;
+  box-shadow: rgba(255, 255, 255, 0.1) 0px 1px 0px 0px inset;
+  font-feature-settings: 'calt', 'kern', 'liga', 'ss03';
+}
+.rc-btn-ghost:hover { color: #ffffff; opacity: 0.6; }
+
+/* Glass Button (macOS-native multi-layer shadow) */
+.rc-btn-glass {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  line-height: 1.15;
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  box-shadow:
+    rgba(255, 255, 255, 0.05) 0px 1px 0px 0px inset,
+    rgba(255, 255, 255, 0.25) 0px 0px 0px 1px,
+    rgba(0, 0, 0, 0.2) 0px -1px 0px 0px inset;
+  font-feature-settings: 'calt', 'kern', 'liga', 'ss03';
+}
+.rc-btn-glass:hover { opacity: 0.6; }
+
+/* ---- Raycast Badges ---- */
+.rc-badge {
+  display: inline-block;
+  background: var(--color-rc-surface-card);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  line-height: 1.14;
+  font-feature-settings: 'calt', 'kern', 'liga', 'ss03';
+}
+.rc-badge-error { background: hsla(0, 100%, 69%, 0.15); color: #FF6363; }
+.rc-badge-success { background: hsla(151, 59%, 59%, 0.15); color: #5fc992; }
+.rc-badge-warning { background: hsla(43, 100%, 60%, 0.15); color: #ffbc33; }
+.rc-badge-info { background: hsla(202, 100%, 67%, 0.15); color: #55b3ff; }
+
+/* ---- Raycast Inputs ---- */
+.rc-input {
+  background: var(--color-rc-bg);
+  color: var(--color-rc-text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: 0.2px;
+  line-height: 1.15;
+  padding: 10px 14px;
+  border: 1px solid var(--color-rc-border-input);
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  font-feature-settings: 'calt', 'kern', 'liga', 'ss03';
+  width: 100%;
+}
+.rc-input::placeholder { color: var(--color-rc-text-dim); }
+.rc-input:focus {
+  border-color: rgba(85, 179, 255, 0.4);
+  box-shadow: 0 0 0 3px hsla(202, 100%, 67%, 0.15);
+}
+
+/* ---- Raycast Label ---- */
+.rc-label {
+  color: var(--color-rc-text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  margin-bottom: 8px;
+  display: block;
+  font-feature-settings: 'calt', 'kern', 'liga', 'ss03';
+}
+
+/* ---- Raycast Navigation ---- */
+.rc-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: var(--color-rc-bg);
+  border-bottom: 1px solid var(--color-rc-border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.rc-nav-link {
+  color: var(--color-rc-text-muted);
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  text-decoration: none;
+  transition: color 0.15s ease;
+  font-feature-settings: 'calt', 'kern', 'liga', 'ss03';
+}
+.rc-nav-link:hover { color: #ffffff; text-decoration: underline; }
+
+/* ---- Raycast Separator ---- */
+.rc-separator {
+  height: 1px;
+  background: var(--color-rc-border);
+  border: none;
+  margin: 0;
+}
+.rc-separator-subtle {
+  height: 1px;
+  background: var(--color-rc-border-subtle);
+  border: none;
+  margin: 0;
+}
+
+/* ---- Floating Panel (command palette style) ---- */
+.rc-floating {
+  background: var(--color-rc-surface-100);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  box-shadow:
+    rgba(0, 0, 0, 0.5) 0px 0px 0px 2px,
+    rgba(255, 255, 255, 0.19) 0px 0px 14px,
+    rgba(255, 255, 255, 0.04) 0px 0px 0px 1px inset,
+    rgba(0, 0, 0, 0.3) 0px 16px 48px;
+}
+
+/* ---- Keyboard Key (Raycast signature) ---- */
+.rc-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  background: linear-gradient(180deg, #121212 0%, #0d0d0d 100%);
+  border-radius: 5px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0px;
+  color: var(--color-rc-text-primary);
+  box-shadow:
+    rgba(0, 0, 0, 0.4) 0px 1.5px 0.5px 2.5px,
+    rgba(255, 255, 255, 0.06) 0px 0.5px 0px 0px inset,
+    rgba(0, 0, 0, 0.3) 0px -0.5px 0.5px 0px inset,
+    rgba(255, 255, 255, 0.04) 0px 0px 0px 1px inset,
+    rgba(0, 0, 0, 0.5) 0px 2px 4px;
+  line-height: 1.33;
+}
+
+/* ---- Scrollbar ---- */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); }
+
+/* ---- Focus Ring — Blue ---- */
+:focus-visible {
+  outline: 2px solid var(--color-rc-blue);
+  outline-offset: 2px;
+}
+
+/* ---- Selection ---- */
+::selection {
+  background: hsla(202, 100%, 67%, 0.3);
+}
+
+/* ---- Hover pattern: opacity, NOT color change ---- */
+.rc-hover:hover { opacity: 0.6; }

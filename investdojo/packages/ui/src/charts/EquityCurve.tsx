@@ -39,26 +39,26 @@ export function EquityCurve({
       width: containerRef.current.clientWidth,
       height,
       layout: {
-        background: { type: ColorType.Solid, color: darkMode ? "#1a1a2e" : "#ffffff" },
-        textColor: darkMode ? "#d1d5db" : "#374151",
+        background: { type: ColorType.Solid, color: darkMode ? "#07080a" : "#ffffff" },
+        textColor: darkMode ? "#9c9c9d" : "#374151",
       },
       grid: {
-        vertLines: { color: darkMode ? "#2d2d44" : "#e5e7eb" },
-        horzLines: { color: darkMode ? "#2d2d44" : "#e5e7eb" },
+        vertLines: { color: darkMode ? "#1b1c1e" : "#e5e7eb" },
+        horzLines: { color: darkMode ? "#1b1c1e" : "#e5e7eb" },
       },
       rightPriceScale: {
-        borderColor: darkMode ? "#2d2d44" : "#d1d5db",
+        borderColor: darkMode ? "#252829" : "#d1d5db",
       },
       timeScale: {
-        borderColor: darkMode ? "#2d2d44" : "#d1d5db",
+        borderColor: darkMode ? "#252829" : "#d1d5db",
       },
     });
 
     // 用户收益曲线
     const userSeries = chart.addAreaSeries({
-      lineColor: "#3b82f6",
-      topColor: "rgba(59, 130, 246, 0.4)",
-      bottomColor: "rgba(59, 130, 246, 0.0)",
+      lineColor: "#55b3ff",
+      topColor: "rgba(85, 179, 255, 0.4)",
+      bottomColor: "rgba(85, 179, 255, 0.0)",
       lineWidth: 2,
     });
 
@@ -116,17 +116,17 @@ export function EquityCurve({
   }, [dailyReturns, benchmarkReturns, height, darkMode]);
 
   return (
-    <div className="w-full rounded-lg overflow-hidden border border-gray-700">
-      <div className="px-3 py-2 flex justify-between items-center border-b border-gray-700">
-        <span className="text-sm font-medium text-gray-300">累计收益曲线</span>
+    <div className="w-full rounded-[12px] overflow-hidden border border-rc-border-subtle">
+      <div className="px-3 py-2 flex justify-between items-center border-b border-rc-border-subtle">
+        <span className="text-sm font-medium text-rc-text-secondary">累计收益曲线</span>
         <div className="flex gap-3 text-xs">
           <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5 bg-blue-500 inline-block" />
+            <span className="w-3 h-0.5 bg-rc-blue inline-block" />
             我的收益
           </span>
           {benchmarkReturns && (
             <span className="flex items-center gap-1">
-              <span className="w-3 h-0.5 bg-gray-500 inline-block" style={{ borderTop: "1px dashed #6b7280" }} />
+              <span className="w-3 h-0.5 bg-rc-text-dim inline-block" style={{ borderTop: "1px dashed #6a6b6c" }} />
               基准
             </span>
           )}

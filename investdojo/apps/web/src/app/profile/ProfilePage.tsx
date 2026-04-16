@@ -1,7 +1,8 @@
 "use client";
 
 // ============================================================
-// 个人中心页面 — 用户信息 + 模拟历史 + 设置
+// 个人中心页面 — Raycast Design System
+// Near-black bg + elevated cards + blue accent
 // ============================================================
 
 import React, { useState } from "react";
@@ -19,23 +20,16 @@ export function ProfilePage({ user }: ProfilePageProps) {
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
 
-  // 解析用户信息
   const displayName =
     user.user_metadata?.display_name ??
     user.user_metadata?.full_name ??
-    user.user_metadata?.name ??
     user.email?.split("@")[0] ??
     "投资者";
 
-  const avatarUrl =
-    user.user_metadata?.avatar_url ??
-    user.user_metadata?.picture ??
-    null;
-
+  const avatarUrl = user.user_metadata?.avatar_url ?? user.user_metadata?.picture ?? null;
   const provider = user.app_metadata?.provider ?? "email";
   const createdAt = new Date(user.created_at).toLocaleDateString("zh-CN");
 
-  // 登出
   const handleSignOut = async () => {
     setLoading(true);
     await supabase.auth.signOut();
@@ -44,138 +38,107 @@ export function ProfilePage({ user }: ProfilePageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950">
-      {/* 顶部导航 */}
-      <header className="sticky top-0 z-40 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div className="min-h-screen bg-rc-bg">
+      {/* Nav */}
+      <nav className="sticky top-0 z-50 bg-rc-bg border-b border-rc-border">
+        <div className="max-w-[1200px] mx-auto flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-4">
-            <Link href="/" className="text-gray-500 hover:text-gray-300 text-sm">
-              ← 返回首页
-            </Link>
-            <h1 className="text-sm font-bold text-white">个人中心</h1>
+            <Link href="/" className="rc-nav-link text-[14px]">← 返回首页</Link>
+            <span className="text-[16px] font-medium text-white tracking-[0.2px]">个人中心</span>
           </div>
           <button
             onClick={handleSignOut}
             disabled={loading}
-            className="px-3 py-1.5 text-sm text-gray-400 hover:text-white border border-gray-700 hover:border-gray-600 rounded-lg transition-colors"
+            className="text-[14px] text-rc-text-muted hover:text-white transition-opacity duration-150 hover:opacity-60 tracking-[0.2px]"
           >
             {loading ? "退出中..." : "退出登录"}
           </button>
         </div>
-      </header>
+      </nav>
 
-      {/* 主体内容 */}
-      <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
-        {/* 用户信息卡片 */}
-        <section className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
+      <div className="max-w-3xl mx-auto px-6 py-12 space-y-8">
+        {/* User Card */}
+        <section className="rc-card-elevated p-8">
           <div className="flex items-start gap-5">
-            {/* 头像 */}
-            <div className="flex-shrink-0">
-              {avatarUrl ? (
-                <img
-                  src={avatarUrl}
-                  alt={displayName}
-                  className="w-20 h-20 rounded-full border-2 border-gray-700"
-                />
-              ) : (
-                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center text-3xl font-bold text-white">
-                  {displayName.charAt(0).toUpperCase()}
-                </div>
-              )}
-            </div>
-
-            {/* 信息 */}
+            {avatarUrl ? (
+              <img src={avatarUrl} alt={displayName} className="w-20 h-20 rounded-[12px] border border-rc-border-subtle" />
+            ) : (
+              <div className="w-20 h-20 rounded-[12px] bg-rc-blue flex items-center justify-center text-[28px] font-semibold text-rc-btn-fg">
+                {displayName.charAt(0).toUpperCase()}
+              </div>
+            )}
             <div className="flex-1 min-w-0">
-              <h2 className="text-xl font-bold text-white">{displayName}</h2>
-              <p className="text-sm text-gray-400 mt-1">{user.email}</p>
-              <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
-                <span className="flex items-center gap-1">
-                  {provider === "github" && "🐙 GitHub 登录"}
-                  {provider === "google" && "🔍 Google 登录"}
-                  {provider === "email" && "📧 邮箱登录"}
+              <h2 className="text-section-heading text-white">{displayName}</h2>
+              <p className="text-caption text-rc-text-secondary mt-1">{user.email}</p>
+              <div className="flex items-center gap-4 mt-3">
+                <span className="rc-badge text-[12px]">
+                  {provider.toUpperCase()}
                 </span>
-                <span>📅 注册于 {createdAt}</span>
+                <span className="text-[12px] text-rc-text-muted tracking-[0.2px]">📅 {createdAt}</span>
               </div>
             </div>
           </div>
         </section>
 
-        {/* 快捷入口 */}
+        {/* Quick Links */}
         <section>
-          <h3 className="text-sm font-medium text-gray-400 mb-4">快捷入口</h3>
+          <h3 className="rc-label text-[13px] mb-3">快速入口</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Link
               href="/simulation"
-              className="flex items-center gap-4 p-4 bg-gray-900 border border-gray-800 rounded-xl hover:border-blue-500/40 transition-colors group"
+              className="group rc-card p-5 transition-all duration-150 hover:translate-y-[-1px]"
             >
               <span className="text-2xl">🎮</span>
-              <div>
-                <div className="text-sm font-medium text-white group-hover:text-blue-400 transition-colors">
-                  历史情景模拟
-                </div>
-                <div className="text-xs text-gray-500">继续你的模拟交易</div>
+              <div className="mt-3">
+                <div className="text-[14px] font-medium text-white group-hover:text-rc-blue transition-colors duration-150 tracking-[0.2px]">历史情景模拟</div>
+                <div className="text-[12px] text-rc-text-muted mt-1">继续你的模拟交易</div>
               </div>
             </Link>
-
-            <div className="flex items-center gap-4 p-4 bg-gray-900/50 border border-gray-800 rounded-xl opacity-60 cursor-not-allowed">
+            <div className="rc-card p-5 opacity-40">
               <span className="text-2xl">📊</span>
-              <div>
-                <div className="text-sm font-medium text-gray-400">AI 量化回测</div>
-                <div className="text-xs text-gray-600">即将推出</div>
+              <div className="mt-3">
+                <div className="text-[14px] font-medium text-rc-text-dim tracking-[0.2px]">AI 量化回测</div>
+                <span className="rc-badge rc-badge-info text-[10px] mt-1">COMING SOON</span>
               </div>
             </div>
-
-            <div className="flex items-center gap-4 p-4 bg-gray-900/50 border border-gray-800 rounded-xl opacity-60 cursor-not-allowed">
+            <div className="rc-card p-5 opacity-40">
               <span className="text-2xl">📋</span>
-              <div>
-                <div className="text-sm font-medium text-gray-400">AI 财报分析</div>
-                <div className="text-xs text-gray-600">即将推出</div>
+              <div className="mt-3">
+                <div className="text-[14px] font-medium text-rc-text-dim tracking-[0.2px]">AI 财报分析</div>
+                <span className="rc-badge rc-badge-info text-[10px] mt-1">COMING SOON</span>
               </div>
             </div>
           </div>
         </section>
 
-        {/* 模拟历史（占位） */}
+        {/* Recent Simulations */}
         <section>
-          <h3 className="text-sm font-medium text-gray-400 mb-4">最近模拟记录</h3>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center">
+          <h3 className="rc-label text-[13px] mb-3">近期模拟</h3>
+          <div className="rc-card p-10 text-center">
             <div className="text-4xl mb-3">📭</div>
-            <p className="text-sm text-gray-500">
-              暂无模拟记录
-            </p>
-            <Link
-              href="/simulation"
-              className="inline-block mt-3 text-sm text-blue-400 hover:text-blue-300 transition-colors"
-            >
+            <p className="text-caption text-rc-text-muted">暂无模拟记录</p>
+            <Link href="/simulation" className="inline-block mt-3 text-caption text-rc-blue hover:underline transition-opacity duration-150">
               开始你的第一场模拟 →
             </Link>
           </div>
         </section>
 
-        {/* 账户信息 */}
+        {/* Account Info */}
         <section>
-          <h3 className="text-sm font-medium text-gray-400 mb-4">账户信息</h3>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800">
-            <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-sm text-gray-400">用户 ID</span>
-              <span className="text-xs text-gray-600 font-mono">{user.id.slice(0, 8)}...</span>
-            </div>
-            <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-sm text-gray-400">邮箱</span>
-              <span className="text-sm text-gray-300">{user.email}</span>
-            </div>
-            <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-sm text-gray-400">登录方式</span>
-              <span className="text-sm text-gray-300 capitalize">{provider}</span>
-            </div>
-            <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-sm text-gray-400">订阅计划</span>
-              <span className="text-xs px-2 py-0.5 bg-gray-800 text-gray-400 rounded">免费版</span>
-            </div>
-            <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-sm text-gray-400">注册时间</span>
-              <span className="text-sm text-gray-300">{createdAt}</span>
-            </div>
+          <h3 className="rc-label text-[13px] mb-3">账户信息</h3>
+          <div className="rc-card p-0 divide-y divide-rc-border-subtle overflow-hidden">
+            {[
+              { label: "用户 ID", value: <span className="text-[12px] font-rc-mono text-rc-text-muted">{user.id.slice(0, 8)}...</span> },
+              { label: "邮箱", value: <span className="text-[14px] text-white tracking-[0.2px]">{user.email}</span> },
+              { label: "登录方式", value: <span className="rc-badge text-[12px]">{provider.toUpperCase()}</span> },
+              { label: "套餐", value: <span className="rc-badge text-[12px]">FREE</span> },
+              { label: "注册时间", value: <span className="text-[14px] text-white tracking-[0.2px]">{createdAt}</span> },
+            ].map(({ label, value }) => (
+              <div key={label} className="flex items-center justify-between px-6 py-4">
+                <span className="text-[13px] text-rc-text-muted tracking-[0.2px]">{label}</span>
+                {value}
+              </div>
+            ))}
           </div>
         </section>
       </div>

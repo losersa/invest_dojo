@@ -148,7 +148,7 @@ function calcMACD(klines: KLine[], fast = 12, slow = 26, signal = 9) {
     difLine.push({ time: t, value: round(dif[i], 4) });
     deaLine.push({ time: t, value: round(dea[i], 4) });
     const bar = 2 * (dif[i] - dea[i]);
-    hist.push({ time: t, value: round(bar, 4), color: bar >= 0 ? "rgba(239,68,68,0.7)" : "rgba(34,197,94,0.7)" });
+    hist.push({ time: t, value: round(bar, 4), color: bar >= 0 ? "rgba(255,99,99,0.7)" : "rgba(95,201,146,0.7)" });
   }
   return { dif: difLine, dea: deaLine, histogram: hist };
 }
@@ -303,21 +303,21 @@ export function KLineChart({
       width: mainChartRef.current.clientWidth,
       height,
       layout: {
-        background: { type: ColorType.Solid, color: darkMode ? "#0f0f1a" : "#ffffff" },
-        textColor: darkMode ? "#9ca3af" : "#374151",
+        background: { type: ColorType.Solid, color: darkMode ? "#07080a" : "#ffffff" },
+        textColor: darkMode ? "#9c9c9d" : "#374151",
         fontSize: 11,
       },
       grid: {
-        vertLines: { color: darkMode ? "#1f1f35" : "#e5e7eb" },
-        horzLines: { color: darkMode ? "#1f1f35" : "#e5e7eb" },
+        vertLines: { color: darkMode ? "#1b1c1e" : "#e5e7eb" },
+        horzLines: { color: darkMode ? "#1b1c1e" : "#e5e7eb" },
       },
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: {
-        borderColor: darkMode ? "#2d2d44" : "#d1d5db",
+        borderColor: darkMode ? "#252829" : "#d1d5db",
         scaleMargins: { top: 0.05, bottom: 0.1 },
       },
       timeScale: {
-        borderColor: darkMode ? "#2d2d44" : "#d1d5db",
+        borderColor: darkMode ? "#252829" : "#d1d5db",
         timeVisible: timeFrame !== "1d" && timeFrame !== "1w" && timeFrame !== "1M",
         rightOffset: 5,
         barSpacing: 8,
@@ -326,12 +326,12 @@ export function KLineChart({
 
     // K 线（涨红跌绿）
     const candleSeries = chart.addCandlestickSeries({
-      upColor: "#ef4444",
-      downColor: "#22c55e",
-      borderUpColor: "#ef4444",
-      borderDownColor: "#22c55e",
-      wickUpColor: "#ef4444",
-      wickDownColor: "#22c55e",
+      upColor: "#FF6363",
+      downColor: "#5fc992",
+      borderUpColor: "#FF6363",
+      borderDownColor: "#5fc992",
+      wickUpColor: "#FF6363",
+      wickDownColor: "#5fc992",
     });
 
     // K 线数据
@@ -357,7 +357,7 @@ export function KLineChart({
       markers.push({
         time: toChartTime(highPoint.date),
         position: "aboveBar",
-        color: "#ef4444",
+        color: "#FF6363",
         shape: "arrowDown",
         text: `▲ ${highPoint.high.toFixed(2)}`,
       });
@@ -366,7 +366,7 @@ export function KLineChart({
       markers.push({
         time: toChartTime(lowPoint.date),
         position: "belowBar",
-        color: "#22c55e",
+        color: "#5fc992",
         shape: "arrowUp",
         text: `▼ ${lowPoint.low.toFixed(2)}`,
       });
@@ -382,7 +382,7 @@ export function KLineChart({
           markers.push({
             time: toChartTime(matchK.date),
             position: "aboveBar",
-            color: n.sentiment === "positive" ? "#ef4444" : n.sentiment === "negative" ? "#22c55e" : "#6b7280",
+            color: n.sentiment === "positive" ? "#FF6363" : n.sentiment === "negative" ? "#5fc992" : "#6a6b6c",
             shape: n.category === "policy" ? "square" : "circle",
             text: n.title.slice(0, 6),
           });
@@ -393,7 +393,7 @@ export function KLineChart({
           markers.push({
             time: toChartTime(n.date),
             position: "aboveBar",
-            color: n.sentiment === "positive" ? "#ef4444" : n.sentiment === "negative" ? "#22c55e" : "#6b7280",
+            color: n.sentiment === "positive" ? "#FF6363" : n.sentiment === "negative" ? "#5fc992" : "#6a6b6c",
             shape: n.category === "policy" ? "square" : "circle",
             text: n.title.slice(0, 6),
           });
@@ -448,15 +448,15 @@ export function KLineChart({
       width: subChartRef.current.clientWidth,
       height: subHeight,
       layout: {
-        background: { type: ColorType.Solid, color: darkMode ? "#0f0f1a" : "#ffffff" },
-        textColor: darkMode ? "#9ca3af" : "#374151",
+        background: { type: ColorType.Solid, color: darkMode ? "#07080a" : "#ffffff" },
+        textColor: darkMode ? "#9c9c9d" : "#374151",
         fontSize: 10,
       },
       grid: {
-        vertLines: { color: darkMode ? "#1f1f35" : "#e5e7eb" },
-        horzLines: { color: darkMode ? "#1f1f35" : "#e5e7eb" },
+        vertLines: { color: darkMode ? "#1b1c1e" : "#e5e7eb" },
+        horzLines: { color: darkMode ? "#1b1c1e" : "#e5e7eb" },
       },
-      rightPriceScale: { borderColor: darkMode ? "#2d2d44" : "#d1d5db" },
+      rightPriceScale: { borderColor: darkMode ? "#252829" : "#d1d5db" },
       timeScale: { visible: false },
       crosshair: { mode: CrosshairMode.Normal },
     });
@@ -467,7 +467,7 @@ export function KLineChart({
         klines.map((k) => ({
           time: toChartTime(k.date),
           value: k.volume,
-          color: k.close >= k.open ? "rgba(239,68,68,0.5)" : "rgba(34,197,94,0.5)",
+          color: k.close >= k.open ? "rgba(255,99,99,0.5)" : "rgba(95,201,146,0.5)",
         })),
       );
     } else if (subIndicator === "MACD") {
@@ -523,19 +523,19 @@ export function KLineChart({
   });
 
   return (
-    <div className="relative w-full rounded-lg overflow-hidden border border-gray-700/50 bg-[#0f0f1a]">
+    <div className="relative w-full rounded-[12px] overflow-hidden border border-rc-border-subtle bg-[#07080a]">
       {/* ===== 顶部工具栏 ===== */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-700/50 bg-[#141428]">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-rc-border-subtle bg-rc-surface-100">
         {/* 时间周期选择器 */}
         <div className="flex items-center gap-0.5">
           {availableTimeFrames.map((tf) => (
             <button
               key={tf}
               onClick={() => onTimeFrameChange?.(tf)}
-              className={`px-2 py-1 text-xs rounded transition-colors ${
+              className={`px-2 py-1 text-xs rounded-[6px] transition-opacity duration-150 ${
                 timeFrame === tf
-                  ? "bg-blue-600 text-white font-medium"
-                  : "text-gray-400 hover:text-white hover:bg-gray-700/50"
+                  ? "bg-rc-blue text-rc-btn-fg font-semibold"
+                  : "text-rc-text-muted hover:text-white hover:opacity-60"
               }`}
             >
               {TIME_FRAME_LABELS[tf]}
@@ -545,7 +545,7 @@ export function KLineChart({
 
         {/* 当前日期 */}
         {currentDate && (
-          <span className="text-xs text-gray-500 font-mono">{currentDate}</span>
+          <span className="text-xs text-rc-text-dim font-rc-mono">{currentDate}</span>
         )}
 
         {/* 主图指标选择 */}
@@ -554,10 +554,10 @@ export function KLineChart({
             <button
               key={ind}
               onClick={() => setMainIndicator(ind)}
-              className={`px-2 py-1 text-xs rounded transition-colors ${
+              className={`px-2 py-1 text-xs rounded-[6px] transition-opacity duration-150 ${
                 mainIndicator === ind
-                  ? "bg-gray-600 text-white font-medium"
-                  : "text-gray-500 hover:text-gray-300"
+                  ? "bg-rc-surface-card text-white font-semibold"
+                  : "text-rc-text-dim hover:text-rc-text-secondary"
               }`}
             >
               {ind === "NONE" ? "隐藏" : ind}
@@ -598,15 +598,15 @@ export function KLineChart({
       <div ref={mainChartRef} />
 
       {/* ===== 副图指标选择器 ===== */}
-      <div className="flex items-center gap-0.5 px-3 py-1 border-t border-gray-700/50 bg-[#141428]">
+      <div className="flex items-center gap-0.5 px-3 py-1 border-t border-rc-border-subtle bg-rc-surface-100">
         {(["VOL", "MACD", "KDJ", "RSI"] as SubIndicator[]).map((ind) => (
           <button
             key={ind}
             onClick={() => setSubIndicator(ind)}
-            className={`px-2 py-0.5 text-xs rounded transition-colors ${
+            className={`px-2 py-0.5 text-xs rounded-[6px] transition-opacity duration-150 ${
               subIndicator === ind
-                ? "bg-blue-600/80 text-white font-medium"
-                : "text-gray-500 hover:text-gray-300"
+                ? "bg-rc-blue/80 text-rc-btn-fg font-semibold"
+                : "text-rc-text-dim hover:text-rc-text-secondary"
             }`}
           >
             {ind}

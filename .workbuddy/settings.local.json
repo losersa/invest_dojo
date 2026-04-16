@@ -1,0 +1,6 @@
+{
+  "enabledPlugins": {
+    "ppt-implement@cb_teams_marketplace": false,
+    "design-to-code@cb_teams_marketplace": true
+  }
+}

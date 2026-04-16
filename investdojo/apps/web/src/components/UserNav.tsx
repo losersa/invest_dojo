@@ -1,9 +1,8 @@
 "use client";
 
 // ============================================================
-// 用户导航按钮 — 显示在右上角
-// 登录状态：显示头像 + 下拉菜单
-// 未登录状态：显示登录按钮
+// UserNav — Raycast Design System
+// Multi-layer shadow dropdown, opacity hover transitions
 // ============================================================
 
 import React, { useState, useEffect, useRef } from "react";
@@ -20,7 +19,6 @@ export function UserNav() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // 获取用户状态
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -29,29 +27,24 @@ export function UserNav() {
     };
     getUser();
 
-    // 监听登录状态变化
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user ?? null);
-      },
-    );
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
 
     return () => subscription.unsubscribe();
-  }, [supabase.auth]);
+  }, []);
 
-  // 点击外部关闭菜单
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handler = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // 登出
-  const handleSignOut = async () => {
+  const handleLogout = async () => {
     await supabase.auth.signOut();
     setMenuOpen(false);
     router.push("/");
@@ -59,83 +52,73 @@ export function UserNav() {
   };
 
   if (loading) {
-    return (
-      <div className="w-8 h-8 rounded-full bg-gray-800 animate-pulse" />
-    );
+    return <div className="w-8 h-8 rounded-[6px] bg-rc-surface-card animate-pulse" />;
   }
 
-  // 未登录
   if (!user) {
     return (
-      <Link
-        href="/login"
-        className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-      >
+      <Link href="/login" className="rc-btn-glass text-[14px] px-4 py-2">
         登录
       </Link>
     );
   }
 
-  // 已登录
   const displayName =
     user.user_metadata?.display_name ??
     user.user_metadata?.full_name ??
     user.email?.split("@")[0] ??
-    "用户";
+    "U";
 
-  const avatarUrl = user.user_metadata?.avatar_url ?? null;
+  const initial = displayName.charAt(0).toUpperCase();
 
   return (
     <div className="relative" ref={menuRef}>
       <button
         onClick={() => setMenuOpen(!menuOpen)}
-        className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+        className="w-8 h-8 rounded-[6px] bg-rc-blue flex items-center justify-center text-[12px] font-semibold text-rc-btn-fg transition-opacity duration-150 hover:opacity-60"
       >
-        {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt={displayName}
-            className="w-8 h-8 rounded-full border border-gray-700"
-          />
-        ) : (
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center text-sm font-bold text-white">
-            {displayName.charAt(0).toUpperCase()}
-          </div>
-        )}
-        <span className="hidden md:block text-sm text-gray-300 max-w-[100px] truncate">
-          {displayName}
-        </span>
+        {initial}
       </button>
 
-      {/* 下拉菜单 */}
       {menuOpen && (
-        <div className="absolute right-0 top-full mt-2 w-48 bg-gray-900 border border-gray-700 rounded-xl shadow-xl py-1 z-50">
-          <div className="px-3 py-2 border-b border-gray-800">
-            <div className="text-sm font-medium text-white truncate">{displayName}</div>
-            <div className="text-xs text-gray-500 truncate">{user.email}</div>
+        <div className="absolute right-0 top-11 w-56 rc-floating z-50">
+          {/* User Info */}
+          <div className="px-4 py-3 border-b border-rc-border-subtle">
+            <p className="text-[14px] font-medium text-rc-text-primary truncate tracking-[0.2px]">
+              {displayName}
+            </p>
+            <p className="text-[12px] text-rc-text-muted truncate mt-0.5 font-rc-mono">
+              {user.email}
+            </p>
           </div>
 
-          <Link
-            href="/profile"
-            onClick={() => setMenuOpen(false)}
-            className="block px-3 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
-          >
-            👤 个人中心
-          </Link>
-
-          <Link
-            href="/simulation"
-            onClick={() => setMenuOpen(false)}
-            className="block px-3 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
-          >
-            🎮 模拟交易
-          </Link>
-
-          <div className="border-t border-gray-800 mt-1 pt-1">
-            <button
-              onClick={handleSignOut}
-              className="block w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-gray-800 transition-colors"
+          {/* Menu Items */}
+          <div className="py-1">
+            <Link
+              href="/profile"
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-3 px-4 py-2.5 text-[14px] text-rc-text-secondary hover:bg-white/[0.06] transition-colors duration-150 tracking-[0.2px]"
             >
+              <span className="text-[14px]">👤</span>
+              个人中心
+            </Link>
+            <Link
+              href="/simulation"
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-3 px-4 py-2.5 text-[14px] text-rc-text-secondary hover:bg-white/[0.06] transition-colors duration-150 tracking-[0.2px]"
+            >
+              <span className="text-[14px]">🎮</span>
+              历史模拟
+            </Link>
+          </div>
+
+          {/* Logout */}
+          <div className="border-t border-rc-border-subtle py-1">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 px-4 py-2.5 text-[14px] text-rc-red hover:bg-white/[0.06] transition-colors duration-150 text-left tracking-[0.2px]"
+            >
+              <span className="text-[14px]">🚪</span>
               退出登录
             </button>
           </div>

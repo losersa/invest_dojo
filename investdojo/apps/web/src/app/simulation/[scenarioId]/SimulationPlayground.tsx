@@ -6,7 +6,7 @@
 // 支持自动播放（5分钟逐帧 / 1小时跳帧 / 日推进）
 // ============================================================
 
-import React, { useEffect, useState, useCallback, useRef, use } from "react";
+import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import { useSimulationStore } from "@/stores/simulation";
 import { KLineChart, type TimeFrame } from "@investdojo/ui/charts";
@@ -34,12 +34,10 @@ function clipMinuteKlines(raw: KLine[], currentDate: string): KLine[] {
 }
 
 export function SimulationPlayground({
-  paramsPromise,
+  scenarioId,
 }: {
-  paramsPromise: Promise<{ scenarioId: string }>;
+  scenarioId: string;
 }) {
-  const { scenarioId } = use(paramsPromise);
-
   const {
     scenarioMeta,
     progress,
@@ -62,7 +60,7 @@ export function SimulationPlayground({
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [timeFrame, setTimeFrame] = useState<TimeFrame>("1d");
   const [availableTimeFrames, setAvailableTimeFrames] = useState<TimeFrame[]>(["1d", "1w", "1M"]);
-  const [minuteKlines, setMinuteKlines] = useState<Record<string, KLine[]>>({});
+  const [minuteKlinesMap, setMinuteKlinesMap] = useState<Record<string, KLine[]>>({});
   const [has5min, setHas5min] = useState(false);
 
   // ---- 自动播放状态 ----
@@ -72,11 +70,18 @@ export function SimulationPlayground({
   // 分钟级自动播放：追踪当前已展示到的 5m 柱索引
   const [minutePlayIndex, setMinutePlayIndex] = useState<number>(-1);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // 用 ref 追踪最新状态（因为 setInterval 闭包问题）
-  const playStateRef = useRef({ playMode, playSpeed, stepSize, minutePlayIndex, isLastDay, currentDate });
+
+  // 用 ref 追踪最新值（setInterval 闭包需要）
+  const latestRef = useRef({
+    playMode, playSpeed, stepSize, minutePlayIndex, isLastDay, currentDate,
+    scenarioId, selectedSymbol, minuteKlinesMap,
+  });
   useEffect(() => {
-    playStateRef.current = { playMode, playSpeed, stepSize, minutePlayIndex, isLastDay, currentDate };
-  }, [playMode, playSpeed, stepSize, minutePlayIndex, isLastDay, currentDate]);
+    latestRef.current = {
+      playMode, playSpeed, stepSize, minutePlayIndex, isLastDay, currentDate,
+      scenarioId, selectedSymbol, minuteKlinesMap,
+    };
+  });
 
   // 加载场景数据（Supabase 优先，mock 降级）
   useEffect(() => {
@@ -84,23 +89,18 @@ export function SimulationPlayground({
 
     async function load() {
       const supabaseData = await loadScenarioFromSupabase(scenarioId);
-
       if (cancelled) return;
 
       if (supabaseData) {
-        console.log("[SimulationPlayground] 使用 Supabase 真实数据");
         loadScenario(supabaseData);
         setSelectedSymbol(supabaseData.meta.symbols[0] ?? "");
 
         const h5 = await has5minData(scenarioId);
-        setHas5min(h5);
-        if (h5) {
-          setAvailableTimeFrames(["5m", "15m", "1h", "4h", "1d", "1w", "1M"]);
-        } else {
-          setAvailableTimeFrames(["1d", "1w", "1M"]);
+        if (!cancelled) {
+          setHas5min(h5);
+          setAvailableTimeFrames(h5 ? ["5m", "15m", "1h", "4h", "1d", "1w", "1M"] : ["1d", "1w", "1M"]);
         }
       } else {
-        console.log("[SimulationPlayground] Supabase 不可用，使用 mock 数据");
         const data = generateMockScenario(scenarioId);
         loadScenario(data);
         setSelectedSymbol(data.meta.symbols[0] ?? "");
@@ -108,25 +108,25 @@ export function SimulationPlayground({
     }
 
     load();
-    return () => {
-      cancelled = true;
-      reset();
-    };
+    return () => { cancelled = true; reset(); };
   }, [scenarioId, loadScenario, reset]);
 
   // ---- 当 currentDate 变化时，重置分钟播放索引 ----
+  const currentDateRef = useRef(currentDate);
   useEffect(() => {
-    if (!currentDate) return;
-    // 计算截止当天的 5m 柱数量，直接设为最后一根（即显示到当天结束）
-    const cacheKey = `${scenarioId}:${selectedSymbol}:5m`;
-    const raw = minuteKlines[cacheKey];
-    if (raw) {
-      const clipped = clipMinuteKlines(raw, currentDate);
-      setMinutePlayIndex(clipped.length);
-    } else {
-      setMinutePlayIndex(-1);
+    // 仅当 currentDate 真的变了才重置（避免初始化竞争）
+    if (currentDate && currentDate !== currentDateRef.current) {
+      currentDateRef.current = currentDate;
+      const cacheKey = `${scenarioId}:${selectedSymbol}:5m`;
+      const raw = minuteKlinesMap[cacheKey];
+      if (raw) {
+        const clipped = clipMinuteKlines(raw, currentDate);
+        setMinutePlayIndex(clipped.length);
+      } else {
+        setMinutePlayIndex(-1);
+      }
     }
-  }, [currentDate, scenarioId, selectedSymbol, minuteKlines]);
+  }, [currentDate, scenarioId, selectedSymbol, minuteKlinesMap]);
 
   // ---- 自动播放定时器 ----
   useEffect(() => {
@@ -140,40 +140,27 @@ export function SimulationPlayground({
     const intervalMs = Math.max(100, 1000 / playSpeed);
 
     timerRef.current = setInterval(() => {
-      const ps = playStateRef.current;
-      if (ps.isLastDay && ps.stepSize === "1d") {
+      const s = latestRef.current;
+      if (s.isLastDay && s.stepSize === "1d") {
         setPlayMode("stopped");
         return;
       }
 
-      if (ps.stepSize === "1d") {
-        // 日推进
+      if (s.stepSize === "1d") {
         advanceDay();
-      } else if (ps.stepSize === "1h") {
-        // 每次跳 12 根 5m 柱（= 1 小时）
-        setMinutePlayIndex((prev) => {
-          const cacheKey = `${scenarioId}:${selectedSymbol}:5m`;
-          const raw = minuteKlines[cacheKey];
-          if (!raw) return prev;
-          const clipped = clipMinuteKlines(raw, ps.currentDate);
-          const next = prev + 12;
-          if (next >= clipped.length) {
-            // 当天分钟数据播完，推进到下一天
-            if (!ps.isLastDay) advanceDay();
-            return 0;
-          }
-          return next;
-        });
       } else {
-        // 5m: 每次 +1 根
+        const barsPerStep = s.stepSize === "1h" ? 12 : 1;
         setMinutePlayIndex((prev) => {
-          const cacheKey = `${scenarioId}:${selectedSymbol}:5m`;
-          const raw = minuteKlines[cacheKey];
+          const cacheKey = `${s.scenarioId}:${s.selectedSymbol}:5m`;
+          const raw = s.minuteKlinesMap[cacheKey];
           if (!raw) return prev;
-          const clipped = clipMinuteKlines(raw, ps.currentDate);
-          const next = prev + 1;
+          const clipped = clipMinuteKlines(raw, s.currentDate);
+          const next = prev + barsPerStep;
           if (next >= clipped.length) {
-            if (!ps.isLastDay) advanceDay();
+            if (!s.isLastDay) {
+              // 不要在 setState 回调里调另一个 setState，用 setTimeout 推到下一个微任务
+              setTimeout(() => advanceDay(), 0);
+            }
             return 0;
           }
           return next;
@@ -184,7 +171,6 @@ export function SimulationPlayground({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-    // 依赖只放 playMode 和 playSpeed，其他用 ref 读取
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playMode, playSpeed]);
 
@@ -234,7 +220,7 @@ export function SimulationPlayground({
   const handleAdvanceHour = useCallback(() => {
     setPlayMode("stopped");
     const cacheKey = `${scenarioId}:${selectedSymbol}:5m`;
-    const raw = minuteKlines[cacheKey];
+    const raw = minuteKlinesMap[cacheKey];
     if (!raw || !currentDate) { advanceDay(); return; }
     const clipped = clipMinuteKlines(raw, currentDate);
     const next = minutePlayIndex + 12;
@@ -243,7 +229,7 @@ export function SimulationPlayground({
     } else {
       setMinutePlayIndex(next);
     }
-  }, [scenarioId, selectedSymbol, minuteKlines, currentDate, minutePlayIndex, advanceDay]);
+  }, [scenarioId, selectedSymbol, minuteKlinesMap, currentDate, minutePlayIndex, advanceDay]);
 
   // 播放/暂停
   const togglePlay = useCallback(() => {
@@ -256,14 +242,13 @@ export function SimulationPlayground({
       setTimeFrame(tf);
       if (["5m", "15m", "1h", "4h"].includes(tf) && selectedSymbol) {
         const cacheKey = `${scenarioId}:${selectedSymbol}:5m`;
-        if (!minuteKlines[cacheKey]) {
-          console.log(`[SimulationPlayground] 加载 5 分钟数据: ${selectedSymbol}`);
+        if (!minuteKlinesMap[cacheKey]) {
           const data = await loadMinuteKlines(scenarioId, selectedSymbol);
-          setMinuteKlines((prev) => ({ ...prev, [cacheKey]: data }));
+          setMinuteKlinesMap((prev) => ({ ...prev, [cacheKey]: data }));
         }
       }
     },
-    [scenarioId, selectedSymbol, minuteKlines],
+    [scenarioId, selectedSymbol, minuteKlinesMap],
   );
 
   // 切换股票时也加载分钟数据
@@ -272,13 +257,13 @@ export function SimulationPlayground({
       setSelectedSymbol(symbol);
       if (["5m", "15m", "1h", "4h"].includes(timeFrame)) {
         const cacheKey = `${scenarioId}:${symbol}:5m`;
-        if (!minuteKlines[cacheKey]) {
+        if (!minuteKlinesMap[cacheKey]) {
           const data = await loadMinuteKlines(scenarioId, symbol);
-          setMinuteKlines((prev) => ({ ...prev, [cacheKey]: data }));
+          setMinuteKlinesMap((prev) => ({ ...prev, [cacheKey]: data }));
         }
       }
     },
-    [scenarioId, timeFrame, minuteKlines],
+    [scenarioId, timeFrame, minuteKlinesMap],
   );
 
   // 场景结束
@@ -287,10 +272,47 @@ export function SimulationPlayground({
     calculateMetrics();
   }, [calculateMetrics]);
 
+  // ---- 用 useMemo 计算图表数据（不在 render 中执行 IIFE）----
+  const chartKlines = useMemo(() => {
+    if (["5m", "15m", "1h", "4h"].includes(timeFrame)) {
+      const cacheKey = `${scenarioId}:${selectedSymbol}:5m`;
+      const raw5m = minuteKlinesMap[cacheKey] ?? [];
+      if (raw5m.length === 0 || !currentDate) return [];
+
+      let clipped = clipMinuteKlines(raw5m, currentDate);
+      if (minutePlayIndex >= 0 && minutePlayIndex < clipped.length) {
+        clipped = clipped.slice(0, minutePlayIndex);
+      }
+      if (clipped.length === 0) return [];
+      if (timeFrame === "5m") return clipped;
+      return aggregateMinuteKlines(clipped, timeFrame as "15m" | "1h" | "4h");
+    }
+    return visibleKlines[selectedSymbol] ?? [];
+  }, [timeFrame, scenarioId, selectedSymbol, minuteKlinesMap, currentDate, minutePlayIndex, visibleKlines]);
+
+  // 分钟进度信息
+  const minuteProgressInfo = useMemo(() => {
+    if (!has5min || !["5m", "15m", "1h", "4h"].includes(timeFrame)) return null;
+    const cacheKey = `${scenarioId}:${selectedSymbol}:5m`;
+    const raw = minuteKlinesMap[cacheKey];
+    if (!raw || !currentDate) return null;
+    const clipped = clipMinuteKlines(raw, currentDate);
+    const shown = Math.min(minutePlayIndex >= 0 ? minutePlayIndex : clipped.length, clipped.length);
+    if (shown > 0 && shown <= clipped.length) {
+      const lastBar = clipped[shown - 1];
+      const ts = Number(lastBar.date);
+      const d = new Date(ts * 1000);
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      return { shown, total: clipped.length, time: `${hh}:${mm}` };
+    }
+    return { shown, total: clipped.length, time: "09:30" };
+  }, [has5min, timeFrame, scenarioId, selectedSymbol, minuteKlinesMap, currentDate, minutePlayIndex]);
+
   if (!scenarioMeta || !progress) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="text-gray-400">加载场景数据中...</div>
+      <div className="min-h-screen bg-rc-bg flex items-center justify-center">
+        <div className="text-rc-text-muted text-[15px] tracking-[0.2px]">加载场景数据中...</div>
       </div>
     );
   }
@@ -311,125 +333,73 @@ export function SimulationPlayground({
   };
   const selectedName = symbolNames[selectedSymbol] ?? selectedSymbol;
 
-  // ---- 计算要传给 KLineChart 的 klines ----
-  const chartKlines = (() => {
-    if (["5m", "15m", "1h", "4h"].includes(timeFrame)) {
-      const cacheKey = `${scenarioId}:${selectedSymbol}:5m`;
-      const raw5m = minuteKlines[cacheKey] ?? [];
-      if (raw5m.length === 0) return [];
-
-      // 关键修复：按 currentDate 裁剪分钟数据
-      let clipped = clipMinuteKlines(raw5m, currentDate);
-
-      // 如果正在分钟级自动播放，进一步裁剪到 minutePlayIndex
-      if (minutePlayIndex >= 0 && minutePlayIndex < clipped.length) {
-        clipped = clipped.slice(0, minutePlayIndex);
-      }
-
-      if (clipped.length === 0) return [];
-
-      if (timeFrame === "5m") return clipped;
-      return aggregateMinuteKlines(clipped, timeFrame as "15m" | "1h" | "4h");
-    }
-    return visibleKlines[selectedSymbol] ?? [];
-  })();
-
-  // 分钟进度信息
-  const minuteProgressInfo = (() => {
-    if (!has5min || !["5m", "15m", "1h", "4h"].includes(timeFrame)) return null;
-    const cacheKey = `${scenarioId}:${selectedSymbol}:5m`;
-    const raw = minuteKlines[cacheKey];
-    if (!raw) return null;
-    const clipped = clipMinuteKlines(raw, currentDate);
-    const shown = Math.min(minutePlayIndex >= 0 ? minutePlayIndex : clipped.length, clipped.length);
-    // 计算当前时间
-    if (shown > 0 && shown <= clipped.length) {
-      const lastBar = clipped[shown - 1];
-      const ts = Number(lastBar.date);
-      const d = new Date(ts * 1000);
-      const hh = String(d.getHours()).padStart(2, "0");
-      const mm = String(d.getMinutes()).padStart(2, "0");
-      return { shown, total: clipped.length, time: `${hh}:${mm}` };
-    }
-    return { shown, total: clipped.length, time: "09:30" };
-  })();
-
   return (
-    <div className="min-h-screen bg-gray-950">
+    <div className="min-h-screen bg-rc-bg">
       {/* Toast */}
       {toast && (
         <div className={cn(
-          "fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm font-medium",
-          toast.type === "success" ? "bg-green-600 text-white" : "bg-red-600 text-white",
+          "fixed top-14 left-1/2 -translate-x-1/2 z-[60] px-5 py-2.5 rounded-[6px] shadow-[rgba(1,1,32,0.4)_0px_4px_20px] text-[13px] font-medium tracking-[0.2px]",
+          toast.type === "success" ? "bg-stock-down text-white" : "bg-stock-up text-white",
         )}>
           {toast.msg}
         </div>
       )}
 
-      {/* 顶部状态栏 */}
-      <header className="sticky top-0 z-40 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800">
-        <div className="max-w-[1920px] mx-auto px-4 py-2">
+      {/* ---- Header (Dark Surface) ---- */}
+      <header className="sticky top-0 z-50 bg-rc-surface-100 border-b border-rc-border">
+        <div className="max-w-[1920px] mx-auto px-6 py-2.5">
           <div className="flex items-center justify-between">
-            {/* 左：场景信息 */}
+            {/* Left: Scene info */}
             <div className="flex items-center gap-4">
-              <Link href="/simulation" className="text-gray-500 hover:text-gray-300 text-sm">
+              <Link href="/simulation" className="text-[14px] text-rc-text-muted hover:text-white transition-opacity duration-150 tracking-[0.2px]">
                 ← 返回
               </Link>
               <div>
-                <h1 className="text-sm font-bold text-white">{scenarioMeta.name}</h1>
-                <div className="flex items-center gap-3 text-xs text-gray-500">
-                  <span>📅 {currentDate}{minuteProgressInfo ? ` ${minuteProgressInfo.time}` : ""}</span>
-                  <span>
-                    第 {progress.dayIndex + 1} / {progress.totalDays} 天
-                  </span>
+                <h1 className="text-[16px] font-medium text-white tracking-[0.2px]">{scenarioMeta.name}</h1>
+                <div className="flex items-center gap-3 text-[11px] text-rc-text-muted font-rc-mono">
+                  <span>{currentDate}{minuteProgressInfo ? ` ${minuteProgressInfo.time}` : ""}</span>
+                  <span>DAY {progress.dayIndex + 1}/{progress.totalDays}</span>
                   {minuteProgressInfo && (
-                    <span className="text-blue-400">
-                      {minuteProgressInfo.shown}/{minuteProgressInfo.total} 根
-                    </span>
+                    <span className="text-rc-blue">{minuteProgressInfo.shown}/{minuteProgressInfo.total}</span>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* 中：组合概览 */}
+            {/* Center: Portfolio overview */}
             <div className="hidden md:flex items-center gap-6">
               <div className="text-center">
-                <div className="text-xs text-gray-500">总资产</div>
-                <div className="text-sm font-bold text-white font-mono">
-                  {formatMoney(portfolio.totalAssets)}
-                </div>
+                <div className="text-[10px] text-rc-text-muted font-rc-mono">TOTAL</div>
+                <div className="text-[14px] font-medium text-white font-mono tracking-[0.2px]">{formatMoney(portfolio.totalAssets)}</div>
               </div>
               <div className="text-center">
-                <div className="text-xs text-gray-500">总盈亏</div>
-                <div className={cn("text-sm font-bold font-mono", getPriceColor(portfolio.totalProfitLoss))}>
+                <div className="text-[10px] text-rc-text-muted font-rc-mono">P&L</div>
+                <div className={cn("text-[14px] font-medium font-mono tracking-[0.2px]", getPriceColor(portfolio.totalProfitLoss))}>
                   {formatMoney(portfolio.totalProfitLoss)}
-                  <span className="text-xs ml-1">
-                    ({formatPercent(portfolio.totalProfitLossPercent)})
-                  </span>
+                  <span className="text-[11px] ml-1">({formatPercent(portfolio.totalProfitLossPercent)})</span>
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-xs text-gray-500">可用现金</div>
-                <div className="text-sm font-mono text-white">{formatMoney(portfolio.cash)}</div>
+                <div className="text-[10px] text-rc-text-muted font-rc-mono">CASH</div>
+                <div className="text-[14px] font-mono text-white tracking-[0.2px]">{formatMoney(portfolio.cash)}</div>
               </div>
             </div>
 
-            {/* 右：操作按钮 */}
+            {/* Right: Actions */}
             <div className="flex items-center gap-2">
               {!isLastDay ? (
                 <>
                   {has5min && (
                     <button
                       onClick={handleAdvanceHour}
-                      className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded-lg transition-colors"
-                      title="推进 1 小时"
+                      className="rc-btn-glass text-[12px] px-3 py-1.5"
                     >
                       +1h
                     </button>
                   )}
                   <button
                     onClick={handleAdvanceDay}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                    className="bg-rc-blue text-rc-btn-fg text-[13px] font-medium px-4 py-1.5 rounded-[6px] hover:opacity-60 transition-opacity duration-150"
                   >
                     +1天
                   </button>
@@ -437,44 +407,39 @@ export function SimulationPlayground({
               ) : (
                 <button
                   onClick={handleFinish}
-                  className="px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors"
+                  className="bg-rc-blue text-rc-btn-fg text-[13px] font-medium px-4 py-1.5 rounded-[6px] hover:opacity-60 transition-opacity duration-150"
                 >
-                  🏁 结束 & 复盘
+                  🏁 结束复盘
                 </button>
               )}
             </div>
           </div>
         </div>
 
-        {/* 播放控制栏 */}
+        {/* Play Control Bar */}
         {has5min && !isLastDay && (
-          <div className="max-w-[1920px] mx-auto px-4 py-1.5 flex items-center gap-3 border-t border-gray-800/50">
-            {/* 播放/暂停 */}
+          <div className="max-w-[1920px] mx-auto px-6 py-1.5 flex items-center gap-3 border-t border-rc-border">
             <button
               onClick={togglePlay}
               className={cn(
-                "w-8 h-8 rounded-full flex items-center justify-center text-sm transition-colors",
+                "w-7 h-7 rounded-[6px] flex items-center justify-center text-[12px] transition-opacity duration-150",
                 playMode === "playing"
-                  ? "bg-amber-500 hover:bg-amber-600 text-black"
-                  : "bg-green-500 hover:bg-green-600 text-black",
+                  ? "bg-rc-blue text-rc-btn-fg"
+                  : "bg-stock-down text-white",
               )}
-              title={playMode === "playing" ? "暂停" : "播放"}
             >
               {playMode === "playing" ? "⏸" : "▶"}
             </button>
 
-            {/* 步长选择 */}
-            <div className="flex items-center gap-1 text-xs">
-              <span className="text-gray-500">步长:</span>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-rc-text-muted font-rc-mono">STEP</span>
               {(["5m", "1h", "1d"] as StepSize[]).map((s) => (
                 <button
                   key={s}
                   onClick={() => setStepSize(s)}
                   className={cn(
-                    "px-2 py-0.5 rounded transition-colors",
-                    stepSize === s
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-800 text-gray-400 hover:bg-gray-700",
+                    "px-2 py-0.5 text-[11px] rounded-[6px] transition-opacity duration-150",
+                    stepSize === s ? "bg-rc-blue text-rc-btn-fg" : "bg-white/[0.04] text-rc-text-secondary border border-rc-border hover:bg-white/[0.08]",
                   )}
                 >
                   {s}
@@ -482,18 +447,15 @@ export function SimulationPlayground({
               ))}
             </div>
 
-            {/* 速度选择 */}
-            <div className="flex items-center gap-1 text-xs">
-              <span className="text-gray-500">速度:</span>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-rc-text-muted font-rc-mono">SPEED</span>
               {([0.5, 1, 2, 5, 10] as PlaySpeed[]).map((sp) => (
                 <button
                   key={sp}
                   onClick={() => setPlaySpeed(sp)}
                   className={cn(
-                    "px-2 py-0.5 rounded transition-colors",
-                    playSpeed === sp
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-800 text-gray-400 hover:bg-gray-700",
+                    "px-2 py-0.5 text-[11px] rounded-[6px] transition-opacity duration-150",
+                    playSpeed === sp ? "bg-rc-blue text-rc-btn-fg" : "bg-white/[0.04] text-rc-text-secondary border border-rc-border hover:bg-white/[0.08]",
                   )}
                 >
                   {sp}x
@@ -501,31 +463,30 @@ export function SimulationPlayground({
               ))}
             </div>
 
-            {/* 状态指示 */}
             {playMode === "playing" && (
-              <div className="flex items-center gap-1 text-xs text-green-400">
+              <div className="flex items-center gap-1 text-[11px] text-rc-blue font-rc-mono">
                 <span className="animate-pulse">●</span>
-                <span>自动播放中 ({stepSize} / {playSpeed}x)</span>
+                <span>PLAYING</span>
               </div>
             )}
           </div>
         )}
 
-        {/* 进度条 */}
-        <div className="h-0.5 bg-gray-800">
+        {/* Progress Bar */}
+        <div className="h-[2px] bg-rc-surface-card">
           <div
-            className="h-full bg-blue-500 transition-all duration-300"
+            className="h-full bg-rc-blue transition-all duration-300"
             style={{ width: `${((progress.dayIndex + 1) / progress.totalDays) * 100}%` }}
           />
         </div>
       </header>
 
-      {/* 主体内容 */}
+      {/* ---- Main Content ---- */}
       <div className="max-w-[1920px] mx-auto">
         <div className="flex flex-col lg:flex-row">
-          {/* 左侧：K线 + 股票切换 */}
-          <div className="flex-1 min-w-0 p-4 space-y-4">
-            {/* 股票切换 Tab */}
+          {/* Left: K-line + Stock tabs */}
+          <div className="flex-1 min-w-0 p-4 space-y-3">
+            {/* Stock Tabs */}
             <div className="flex gap-2 overflow-x-auto pb-1">
               {scenarioMeta.symbols.map((symbol) => {
                 const kline = todayKlines[symbol];
@@ -535,15 +496,15 @@ export function SimulationPlayground({
                     key={symbol}
                     onClick={() => handleSelectSymbol(symbol)}
                     className={cn(
-                      "flex-shrink-0 px-3 py-2 rounded-lg border transition-colors text-sm",
+                      "flex-shrink-0 px-4 py-2 rounded-[6px] border transition-opacity duration-150 text-[13px] tracking-[0.2px]",
                       selectedSymbol === symbol
-                        ? "border-blue-500 bg-blue-500/10 text-white"
-                        : "border-gray-700 bg-gray-800/50 text-gray-400 hover:border-gray-600",
+                        ? "border-rc-blue bg-rc-blue/[0.08] text-white"
+                        : "border-rc-border bg-white/[0.04] text-rc-text-secondary hover:bg-white/[0.08]",
                     )}
                   >
                     <div className="font-medium">{symbolNames[symbol] ?? symbol}</div>
                     {kline && (
-                      <div className={cn("text-xs font-mono", getPriceColor(change))}>
+                      <div className={cn("text-[11px] font-mono", getPriceColor(change))}>
                         ¥{kline.close.toFixed(2)} {formatPercent(change)}
                       </div>
                     )}
@@ -552,7 +513,7 @@ export function SimulationPlayground({
               })}
             </div>
 
-            {/* K 线图表 */}
+            {/* K-Line Chart */}
             <KLineChart
               klines={chartKlines}
               news={visibleNews.filter((n) =>
@@ -565,9 +526,9 @@ export function SimulationPlayground({
               onTimeFrameChange={handleTimeFrameChange}
             />
 
-            {/* 移动端：新闻 + 交易（折叠） */}
-            <div className="lg:hidden space-y-4">
-              <div className="flex border-b border-gray-700">
+            {/* Mobile: Tabs + Panels */}
+            <div className="lg:hidden space-y-3">
+              <div className="flex p-1 bg-rc-surface-card rounded-[6px]">
                 {[
                   { key: "order", label: "交易" },
                   { key: "position", label: "持仓" },
@@ -577,10 +538,10 @@ export function SimulationPlayground({
                     key={key}
                     onClick={() => setActiveTab(key as typeof activeTab)}
                     className={cn(
-                      "flex-1 py-2 text-sm text-center transition-colors",
+                      "flex-1 py-1.5 text-[13px] text-center rounded-[6px] transition-opacity duration-150 tracking-[0.2px]",
                       activeTab === key
-                        ? "text-blue-400 border-b-2 border-blue-500"
-                        : "text-gray-500",
+                        ? "bg-rc-surface-card text-white"
+                        : "text-rc-text-secondary",
                     )}
                   >
                     {label}
@@ -609,9 +570,9 @@ export function SimulationPlayground({
             </div>
           </div>
 
-          {/* 右侧面板（桌面端） */}
-          <div className="hidden lg:block w-[380px] xl:w-[420px] border-l border-gray-800 min-h-screen">
-            <div className="sticky top-[73px] p-4 space-y-4 max-h-[calc(100vh-73px)] overflow-y-auto">
+          {/* Right Panel (Desktop) */}
+          <div className="hidden lg:block w-[380px] xl:w-[420px] border-l border-rc-border min-h-screen">
+            <div className="sticky top-[88px] p-4 space-y-3 max-h-[calc(100vh-88px)] overflow-y-auto">
               <OrderPanel
                 symbol={selectedSymbol}
                 symbolName={selectedName}

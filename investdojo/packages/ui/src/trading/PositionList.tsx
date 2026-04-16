@@ -1,12 +1,12 @@
 "use client";
 
 // ============================================================
-// 持仓列表组件 — 展示所有持仓、浮盈亏、账户概览
+// 持仓列表 — Raycast Design System
 // ============================================================
 
 import React from "react";
-import type { Portfolio, Position } from "@investdojo/core";
-import { cn, formatMoney, formatPercent, getPriceColor, getPriceBgColor } from "../lib/utils";
+import type { Portfolio } from "@investdojo/core";
+import { cn, formatMoney, formatPercent, getPriceColor } from "../lib/utils";
 
 export interface PositionListProps {
   portfolio: Portfolio;
@@ -16,96 +16,76 @@ export interface PositionListProps {
 
 export function PositionList({ portfolio, onSelectPosition, selectedSymbol }: PositionListProps) {
   return (
-    <div className="rounded-lg bg-gray-800/50 border border-gray-700 overflow-hidden">
-      {/* 账户概览 */}
-      <div className="px-4 py-3 border-b border-gray-700">
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-sm text-gray-400">总资产</span>
-          <span className="text-xl font-bold text-white font-mono">
+    <div className="rc-card p-0 overflow-hidden">
+      {/* Account Overview */}
+      <div className="px-5 py-4 border-b border-rc-border">
+        <div className="flex justify-between items-center mb-3">
+          <span className="text-[10px] text-rc-text-muted font-rc-mono">TOTAL ASSETS</span>
+          <span className="text-[20px] font-medium text-white font-mono tracking-[-0.42px]">
             {formatMoney(portfolio.totalAssets)}
           </span>
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <div className="text-xs text-gray-500">总盈亏</div>
-            <div className={cn("text-sm font-mono font-medium", getPriceColor(portfolio.totalProfitLoss))}>
+            <div className="text-[10px] text-rc-text-muted font-rc-mono">P&L</div>
+            <div className={cn("text-[13px] font-mono font-medium tracking-[0.2px]", getPriceColor(portfolio.totalProfitLoss))}>
               {formatMoney(portfolio.totalProfitLoss)}
             </div>
-            <div className={cn("text-xs font-mono", getPriceColor(portfolio.totalProfitLossPercent))}>
+          </div>
+          <div>
+            <div className="text-[10px] text-rc-text-muted font-rc-mono">RETURN</div>
+            <div className={cn("text-[13px] font-mono font-medium tracking-[0.2px]", getPriceColor(portfolio.totalProfitLossPercent))}>
               {formatPercent(portfolio.totalProfitLossPercent)}
             </div>
           </div>
           <div>
-            <div className="text-xs text-gray-500">持仓市值</div>
-            <div className="text-sm font-mono text-white">{formatMoney(portfolio.totalMarketValue)}</div>
-          </div>
-          <div>
-            <div className="text-xs text-gray-500">可用现金</div>
-            <div className="text-sm font-mono text-white">{formatMoney(portfolio.cash)}</div>
+            <div className="text-[10px] text-rc-text-muted font-rc-mono">CASH</div>
+            <div className="text-[13px] font-mono text-white tracking-[0.2px]">{formatMoney(portfolio.cash)}</div>
           </div>
         </div>
       </div>
 
-      {/* 持仓列表 */}
-      <div>
-        {portfolio.positions.length === 0 ? (
-          <div className="px-4 py-8 text-center text-sm text-gray-500">
-            暂无持仓，点击「买入」开始交易
-          </div>
-        ) : (
-          portfolio.positions.map((pos) => (
-            <PositionRow
+      {/* Header */}
+      <div className="px-5 py-2 border-b border-rc-border">
+        <span className="text-[10px] font-rc-mono text-rc-text-muted">POSITIONS</span>
+      </div>
+
+      {/* Position List */}
+      {portfolio.positions.length === 0 ? (
+        <div className="px-5 py-8 text-center">
+          <p className="text-[13px] text-rc-text-muted tracking-[0.2px]">暂无持仓</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-tai-border-dark">
+          {portfolio.positions.map((pos) => (
+            <button
               key={pos.symbol}
-              position={pos}
-              isSelected={pos.symbol === selectedSymbol}
               onClick={() => onSelectPosition?.(pos.symbol)}
-            />
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function PositionRow({
-  position,
-  isSelected,
-  onClick,
-}: {
-  position: Position;
-  isSelected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "w-full px-4 py-3 flex items-center justify-between border-b border-gray-700/50 transition-colors text-left",
-        isSelected ? "bg-blue-500/10" : "hover:bg-gray-700/30",
+              className={cn(
+                "w-full px-5 py-3 text-left transition-all duration-150 hover:bg-white/[0.04]",
+                selectedSymbol === pos.symbol && "bg-rc-blue/[0.06] border-l-2 border-rc-blue",
+              )}
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="text-[13px] font-medium text-white tracking-[0.2px]">{pos.symbolName}</div>
+                  <div className="text-[11px] text-rc-text-muted mt-0.5 tracking-[0.2px]">
+                    {pos.quantity}股 · 成本 ¥{pos.avgCost.toFixed(2)}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className={cn("text-[13px] font-mono font-medium tracking-[0.2px]", getPriceColor(pos.profitLoss))}>
+                    {formatMoney(pos.profitLoss)}
+                  </div>
+                  <div className={cn("text-[11px] font-mono", getPriceColor(pos.profitLossPercent))}>
+                    {formatPercent(pos.profitLossPercent)}
+                  </div>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
       )}
-    >
-      <div className="flex-1">
-        <div className="flex items-baseline gap-2">
-          <span className="text-sm font-medium text-white">{position.symbolName}</span>
-          <span className="text-xs text-gray-500">{position.symbol}</span>
-        </div>
-        <div className="flex gap-4 mt-1 text-xs text-gray-400">
-          <span>持仓 {position.quantity}股</span>
-          <span>成本 ¥{position.avgCost.toFixed(2)}</span>
-        </div>
-      </div>
-      <div className="text-right">
-        <div className={cn("text-sm font-mono font-medium", getPriceColor(position.profitLoss))}>
-          {formatMoney(position.profitLoss)}
-        </div>
-        <div className={cn(
-          "text-xs font-mono px-1.5 py-0.5 rounded mt-0.5 inline-block",
-          getPriceBgColor(position.profitLossPercent),
-          getPriceColor(position.profitLossPercent),
-        )}>
-          {formatPercent(position.profitLossPercent)}
-        </div>
-      </div>
-    </button>
+    </div>
   );
 }
