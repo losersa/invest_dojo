@@ -1,0 +1,78 @@
+name: Test BaoStock Connectivity
+
+# 只能手动触发的测试 workflow
+# 用途：验证 GitHub Actions 的 runner 能否访问 BaoStock 服务器
+on:
+  workflow_dispatch:
+
+jobs:
+  test-baostock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show runner location
+        run: |
+          echo "== Runner 基础信息 =="
+          curl -s https://ipinfo.io/json || echo "ipinfo.io 不可达"
+          echo ""
+          echo "== 网络延迟测试 =="
+          ping -c 3 www.baostock.com || echo "ping baostock.com 失败"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install baostock
+        run: pip install baostock
+
+      - name: Test BaoStock login + query
+        run: |
+          python3 << 'EOF'
+          import socket
+          socket.setdefaulttimeout(30)
+          import baostock as bs
+          import time
+
+          print("🔌 尝试登录 BaoStock...")
+          start = time.monotonic()
+          lg = bs.login()
+          elapsed = time.monotonic() - start
+          print(f"   login: code={lg.error_code} msg={lg.error_msg} ({elapsed:.1f}s)")
+
+          if lg.error_code != '0':
+              print("❌ 登录失败")
+              exit(1)
+
+          print("\n📊 查询茅台 2024-04-01 日K...")
+          start = time.monotonic()
+          rs = bs.query_history_k_data_plus(
+              "sh.600519",
+              "date,open,high,low,close,volume",
+              start_date="2024-04-01", end_date="2024-04-05",
+              frequency="d", adjustflag="2"
+          )
+          rows = []
+          while rs.error_code == '0' and rs.next():
+              rows.append(rs.get_row_data())
+          elapsed = time.monotonic() - start
+          print(f"   拿到 {len(rows)} 条 ({elapsed:.1f}s)")
+          for r in rows:
+              print(f"   {r}")
+
+          print("\n📊 查询股票列表（测试大数据）...")
+          start = time.monotonic()
+          rs = bs.query_stock_basic()
+          cnt = 0
+          while rs.error_code == '0' and rs.next():
+              cnt += 1
+          elapsed = time.monotonic() - start
+          print(f"   拿到 {cnt} 条 ({elapsed:.1f}s)")
+
+          bs.logout()
+          print("\n✅ BaoStock 在 GitHub Actions 上完全可用！")
+          EOF

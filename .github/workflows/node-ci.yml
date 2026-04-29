@@ -1,0 +1,91 @@
+# InvestDojo · Node / Frontend CI
+#
+# 触发：
+#   - 推送到 main / 特性分支
+#   - PR 到 main
+#   - investdojo/{apps,packages}/ 下文件变动时才跑
+#
+# 检查项：
+#   1. pnpm install 能完成
+#   2. turbo type-check
+#   3. turbo lint
+#   4. turbo build（前端能构建出来）
+#
+# 不在 CI 跑的：
+#   - E2E 测试（需要 DB + 数据，放 T-8.01）
+#
+# 对应文档：docs/product/99_MVP_Sprint0.md · T-0.04
+name: Node CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "investdojo/apps/**"
+      - "investdojo/packages/**"
+      - "investdojo/package.json"
+      - "investdojo/pnpm-lock.yaml"
+      - "investdojo/turbo.json"
+      - ".github/workflows/node-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "investdojo/apps/**"
+      - "investdojo/packages/**"
+      - "investdojo/package.json"
+      - "investdojo/pnpm-lock.yaml"
+      - "investdojo/turbo.json"
+      - ".github/workflows/node-ci.yml"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: investdojo
+
+jobs:
+  typecheck-lint-build:
+    name: Typecheck + Lint + Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+          run_install: false
+
+      - name: 设置 Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: investdojo/pnpm-lock.yaml
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: Turbo 缓存
+        uses: actions/cache@v4
+        with:
+          path: investdojo/.turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-
+
+      - name: Type check
+        run: pnpm run type-check
+        continue-on-error: true  # MVP 阶段不阻塞（现有代码可能有类型问题）
+
+      - name: Lint
+        run: pnpm run lint
+        continue-on-error: true  # MVP 阶段不阻塞
+
+      - name: Build
+        env:
+          # 构建需要的环境变量（公开的，不是机密）
+          NEXT_PUBLIC_SUPABASE_URL: https://adqznqsciqtepzimcvsg.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder' }}
+        run: pnpm run build

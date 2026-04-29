@@ -1,0 +1,51 @@
+# InvestDojo · 文档检查
+#
+# 触发：docs/ 下变动
+# 检查项：
+#   1. Markdown 链接不死
+#   2. 内部相对路径存在
+#
+# 对应文档：docs/README.md 的维护规则
+name: Docs Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs-check.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+  workflow_dispatch:
+
+jobs:
+  link-check:
+    name: 链接检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: lychee 链接检查
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --no-progress
+            --exclude-mail
+            --exclude-loopback
+            --timeout 20
+            --max-concurrency 4
+            ./docs/**/*.md
+          fail: false  # 暂不阻塞，只告警（外部链接可能暂时不通）
+          output: ./lychee-report.md
+
+      - name: 上传报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lychee-report
+          path: ./lychee-report.md
+          retention-days: 7
