@@ -1,0 +1,690 @@
+---
+# InvestDojo 内置技术类因子库（T-3.03）
+#
+# 每个因子必填字段：
+#   id            - 唯一标识（snake_case）
+#   name          - 中文名
+#   name_en       - 英文名
+#   category      - 分类（固定 technical）
+#   tags          - 标签数组（中文）
+#   description   - 一句话描述
+#   formula       - DSL 公式（T-3.01 parser 可解析）
+#   formula_type  - 固定 dsl
+#   output_type   - boolean / scalar
+#   lookback_days - 窗口期（会被 loader 自动推断覆盖，手动填兜底用）
+#   update_frequency - daily
+#
+# 按 8 大类分组：
+#   1. 均线系统（MA/EMA，10 个）
+#   2. 均线交叉（金叉/死叉，10 个）
+#   3. MACD 体系（10 个）
+#   4. BOLL 带（10 个）
+#   5. KDJ 体系（10 个）
+#   6. RSI 体系（10 个）
+#   7. 动量/趋势（10 个）
+#   8. 波动率/成交量（10 个）
+
+factors:
+  # ═══════════════════════════════════════════════════════════
+  # 1. 均线系统（MA / EMA）
+  # ═══════════════════════════════════════════════════════════
+  - id: ma_5_above_close
+    name: "收盘价在 MA5 之上"
+    name_en: "Close above MA5"
+    tags: ["趋势", "短线"]
+    description: "收盘价高于 5 日简单均线，短线强势的基础信号"
+    formula: "close > MA(close, 5)"
+    output_type: boolean
+
+  - id: ma_10_above_close
+    name: "收盘价在 MA10 之上"
+    name_en: "Close above MA10"
+    tags: ["趋势", "短线"]
+    description: "收盘价高于 10 日简单均线"
+    formula: "close > MA(close, 10)"
+    output_type: boolean
+
+  - id: ma_20_above_close
+    name: "收盘价在 MA20 之上"
+    name_en: "Close above MA20"
+    tags: ["趋势", "中线"]
+    description: "收盘价高于 20 日简单均线（月线），中期趋势多头"
+    formula: "close > MA(close, 20)"
+    output_type: boolean
+
+  - id: ma_60_above_close
+    name: "收盘价在 MA60 之上"
+    name_en: "Close above MA60"
+    tags: ["趋势", "中长线"]
+    description: "收盘价高于 60 日简单均线（季线），中长期多头"
+    formula: "close > MA(close, 60)"
+    output_type: boolean
+
+  - id: ma_250_above_close
+    name: "收盘价在 MA250 之上"
+    name_en: "Close above MA250"
+    tags: ["趋势", "长线", "牛熊"]
+    description: "收盘价高于 250 日均线（年线），长牛或熊市反转的关键信号"
+    formula: "close > MA(close, 250)"
+    output_type: boolean
+
+  - id: ema_12_above_close
+    name: "收盘价在 EMA12 之上"
+    name_en: "Close above EMA12"
+    tags: ["趋势", "短线", "灵敏"]
+    description: "EMA12 较 MA12 对近期价格更敏感"
+    formula: "close > EMA(close, 12)"
+    output_type: boolean
+
+  - id: ema_26_above_close
+    name: "收盘价在 EMA26 之上"
+    name_en: "Close above EMA26"
+    tags: ["趋势", "中线"]
+    description: "EMA26 中期趋势参考"
+    formula: "close > EMA(close, 26)"
+    output_type: boolean
+
+  - id: ma5_above_ma20
+    name: "MA5 > MA20（多头排列短中）"
+    name_en: "MA5 above MA20"
+    tags: ["趋势", "多头"]
+    description: "短期均线高于中期均线，短中期多头排列"
+    formula: "MA(close, 5) > MA(close, 20)"
+    output_type: boolean
+
+  - id: ma20_above_ma60
+    name: "MA20 > MA60（多头排列中长）"
+    name_en: "MA20 above MA60"
+    tags: ["趋势", "多头"]
+    description: "中期均线高于长期均线，中长期多头排列"
+    formula: "MA(close, 20) > MA(close, 60)"
+    output_type: boolean
+
+  - id: bull_alignment_5_20_60
+    name: "MA5/MA20/MA60 多头排列"
+    name_en: "MA Bull Alignment"
+    tags: ["趋势", "多头", "经典"]
+    description: "短中长三线多头排列，强势最明确的信号"
+    formula: "MA(close, 5) > MA(close, 20) AND MA(close, 20) > MA(close, 60)"
+    output_type: boolean
+
+  # ═══════════════════════════════════════════════════════════
+  # 2. 均线交叉（金叉 / 死叉）
+  # ═══════════════════════════════════════════════════════════
+  - id: golden_cross_5_10
+    name: "MA5 金叉 MA10"
+    name_en: "MA5 golden cross MA10"
+    tags: ["趋势", "短线", "启动"]
+    description: "5 日均线上穿 10 日均线，超短线启动"
+    formula: "MA(close, 5) cross_up MA(close, 10)"
+    output_type: boolean
+
+  - id: golden_cross_5_20
+    name: "MA5 金叉 MA20（短期金叉）"
+    name_en: "MA5 golden cross MA20"
+    tags: ["趋势", "短线", "经典"]
+    description: "5 日均线上穿 20 日均线，短期趋势反转信号"
+    formula: "MA(close, 5) cross_up MA(close, 20)"
+    output_type: boolean
+
+  - id: golden_cross_10_20
+    name: "MA10 金叉 MA20"
+    name_en: "MA10 golden cross MA20"
+    tags: ["趋势", "短中线"]
+    description: "10 日均线上穿 20 日均线"
+    formula: "MA(close, 10) cross_up MA(close, 20)"
+    output_type: boolean
+
+  - id: golden_cross_20_60
+    name: "MA20 金叉 MA60（中线金叉）"
+    name_en: "MA20 golden cross MA60"
+    tags: ["趋势", "中线", "经典"]
+    description: "20 日均线上穿 60 日均线，中期趋势反转"
+    formula: "MA(close, 20) cross_up MA(close, 60)"
+    output_type: boolean
+
+  - id: golden_cross_60_250
+    name: "MA60 金叉 MA250（长牛信号）"
+    name_en: "MA60 golden cross MA250"
+    tags: ["趋势", "长线", "牛市"]
+    description: "60 日均线上穿年线，长期趋势反转，大级别买点"
+    formula: "MA(close, 60) cross_up MA(close, 250)"
+    output_type: boolean
+
+  - id: death_cross_5_20
+    name: "MA5 死叉 MA20"
+    name_en: "MA5 death cross MA20"
+    tags: ["趋势", "短线", "警示"]
+    description: "5 日均线下穿 20 日均线，短期趋势走弱"
+    formula: "MA(close, 5) cross_down MA(close, 20)"
+    output_type: boolean
+
+  - id: death_cross_20_60
+    name: "MA20 死叉 MA60"
+    name_en: "MA20 death cross MA60"
+    tags: ["趋势", "中线", "警示"]
+    description: "20 日均线下穿 60 日均线，中期走弱"
+    formula: "MA(close, 20) cross_down MA(close, 60)"
+    output_type: boolean
+
+  - id: ema_golden_12_26
+    name: "EMA12 金叉 EMA26"
+    name_en: "EMA12 golden cross EMA26"
+    tags: ["趋势", "灵敏"]
+    description: "MACD 底层指标的 EMA 金叉"
+    formula: "EMA(close, 12) cross_up EMA(close, 26)"
+    output_type: boolean
+
+  - id: ema_death_12_26
+    name: "EMA12 死叉 EMA26"
+    name_en: "EMA12 death cross EMA26"
+    tags: ["趋势", "灵敏", "警示"]
+    description: "MACD 底层指标的 EMA 死叉"
+    formula: "EMA(close, 12) cross_down EMA(close, 26)"
+    output_type: boolean
+
+  - id: close_cross_up_ma20
+    name: "收盘价上穿 MA20"
+    name_en: "Close cross up MA20"
+    tags: ["趋势", "中线", "确认"]
+    description: "股价站上 20 日均线，中期均线支撑确认"
+    formula: "close cross_up MA(close, 20)"
+    output_type: boolean
+
+  # ═══════════════════════════════════════════════════════════
+  # 3. MACD 体系
+  # ═══════════════════════════════════════════════════════════
+  - id: macd_positive
+    name: "MACD 柱为正"
+    name_en: "MACD histogram positive"
+    tags: ["趋势", "动能"]
+    description: "MACD 红柱，短期动能偏多"
+    formula: "MACD() > 0"
+    output_type: boolean
+
+  - id: macd_negative
+    name: "MACD 柱为负"
+    name_en: "MACD histogram negative"
+    tags: ["趋势", "动能", "空头"]
+    description: "MACD 绿柱，短期动能偏空"
+    formula: "MACD() < 0"
+    output_type: boolean
+
+  - id: macd_zero_cross_up
+    name: "MACD 上穿零轴"
+    name_en: "MACD cross above zero"
+    tags: ["趋势", "反转", "启动"]
+    description: "MACD 柱由负转正，多头动能启动"
+    formula: "MACD() cross_up 0"
+    output_type: boolean
+
+  - id: macd_zero_cross_down
+    name: "MACD 下穿零轴"
+    name_en: "MACD cross below zero"
+    tags: ["趋势", "警示"]
+    description: "MACD 柱由正转负，多头动能衰竭"
+    formula: "MACD() cross_down 0"
+    output_type: boolean
+
+  - id: macd_strong_positive
+    name: "MACD 强势放大"
+    name_en: "MACD strong bullish"
+    tags: ["趋势", "加速", "强势"]
+    description: "MACD 柱持续扩大，趋势加速"
+    formula: "MACD() > 0 AND MACD() > MA(MACD(), 5)"
+    output_type: boolean
+
+  - id: macd_weak_negative
+    name: "MACD 弱势扩大"
+    name_en: "MACD strong bearish"
+    tags: ["趋势", "加速", "空头"]
+    description: "MACD 绿柱扩大，空头加速"
+    formula: "MACD() < 0 AND MACD() < MA(MACD(), 5)"
+    output_type: boolean
+
+  - id: macd_shrinking_green
+    name: "MACD 绿柱缩短"
+    name_en: "MACD shrinking bear"
+    tags: ["反转", "预警"]
+    description: "绿柱开始缩短，可能出现底部"
+    formula: "MACD() < 0 AND MACD() > MA(MACD(), 3)"
+    output_type: boolean
+
+  - id: macd_shrinking_red
+    name: "MACD 红柱缩短"
+    name_en: "MACD shrinking bull"
+    tags: ["预警", "顶部"]
+    description: "红柱开始缩短，可能出现顶部"
+    formula: "MACD() > 0 AND MACD() < MA(MACD(), 3)"
+    output_type: boolean
+
+  - id: macd_bottom_divergence
+    name: "MACD 底背离（简化版）"
+    name_en: "MACD Bottom Divergence Simple"
+    tags: ["反转", "底部"]
+    description: "价格创新低但 MACD 未创新低的简化近似"
+    formula: "close < MIN(low, 20) AND MACD() > MIN(MACD(), 20)"
+    output_type: boolean
+
+  - id: macd_top_divergence
+    name: "MACD 顶背离（简化版）"
+    name_en: "MACD Top Divergence Simple"
+    tags: ["反转", "顶部"]
+    description: "价格创新高但 MACD 未创新高的简化近似"
+    formula: "close > MAX(high, 20) AND MACD() < MAX(MACD(), 20)"
+    output_type: boolean
+
+  # ═══════════════════════════════════════════════════════════
+  # 4. BOLL 带
+  # ═══════════════════════════════════════════════════════════
+  - id: boll_width_20
+    name: "BOLL 带宽度（20 日）"
+    name_en: "BOLL width 20"
+    tags: ["波动率", "标量"]
+    description: "布林带上下轨差值，衡量波动水平"
+    formula: "BOLL(close, 20)"
+    output_type: scalar
+
+  - id: boll_squeeze_narrow
+    name: "BOLL 收窄（低波动）"
+    name_en: "BOLL Squeeze"
+    tags: ["波动率", "预爆发"]
+    description: "BOLL 带宽比 30 日均宽小，低波动蓄势"
+    formula: "BOLL(close, 20) < MA(BOLL(close, 20), 30) * 0.7"
+    output_type: boolean
+
+  - id: boll_expanding
+    name: "BOLL 扩张（波动放大）"
+    name_en: "BOLL Expanding"
+    tags: ["波动率", "加速"]
+    description: "BOLL 带宽比近期平均明显放大"
+    formula: "BOLL(close, 20) > MA(BOLL(close, 20), 30) * 1.5"
+    output_type: boolean
+
+  - id: boll_break_upper
+    name: "突破 BOLL 上轨"
+    name_en: "Break BOLL Upper"
+    tags: ["突破", "强势"]
+    description: "收盘价突破 BOLL 上轨（MA20 + 2×STD）"
+    formula: "close > MA(close, 20) + 2 * STD(close, 20)"
+    output_type: boolean
+
+  - id: boll_break_lower
+    name: "跌破 BOLL 下轨"
+    name_en: "Break BOLL Lower"
+    tags: ["破位", "超卖"]
+    description: "收盘价跌破 BOLL 下轨（MA20 - 2×STD）"
+    formula: "close < MA(close, 20) - 2 * STD(close, 20)"
+    output_type: boolean
+
+  - id: boll_mid_support
+    name: "BOLL 中轨支撑（近 MA20）"
+    name_en: "BOLL Middle Support"
+    tags: ["支撑", "回调"]
+    description: "价格回踩至 MA20 附近，且未跌破"
+    formula: "close > MA(close, 20) AND low < MA(close, 20)"
+    output_type: boolean
+
+  - id: boll_upper_touch
+    name: "触及 BOLL 上轨"
+    name_en: "Touch BOLL Upper"
+    tags: ["阻力", "强势"]
+    description: "当日最高价触及布林上轨"
+    formula: "high >= MA(close, 20) + 2 * STD(close, 20)"
+    output_type: boolean
+
+  - id: boll_lower_touch
+    name: "触及 BOLL 下轨"
+    name_en: "Touch BOLL Lower"
+    tags: ["支撑", "超卖"]
+    description: "当日最低价触及布林下轨"
+    formula: "low <= MA(close, 20) - 2 * STD(close, 20)"
+    output_type: boolean
+
+  - id: boll_position
+    name: "BOLL 位置百分比"
+    name_en: "BOLL Position"
+    tags: ["标量", "相对位置"]
+    description: "收盘价在 BOLL 通道中的相对位置 (0~1)"
+    formula: "(close - (MA(close, 20) - 2 * STD(close, 20))) / BOLL(close, 20)"
+    output_type: scalar
+
+  - id: boll_width_expansion_fast
+    name: "BOLL 带宽快速扩张"
+    name_en: "BOLL Width Fast Expansion"
+    tags: ["波动率", "突变"]
+    description: "今日 BOLL 带宽比 5 日前放大 1.3 倍"
+    formula: "BOLL(close, 20) > MA(BOLL(close, 20), 5) * 1.3"
+    output_type: boolean
+
+  # ═══════════════════════════════════════════════════════════
+  # 5. KDJ 体系
+  # ═══════════════════════════════════════════════════════════
+  - id: kdj_k_oversold
+    name: "KDJ K 值超卖 (<20)"
+    name_en: "KDJ K Oversold"
+    tags: ["超卖", "反弹"]
+    description: "K 值低于 20，短期超卖"
+    formula: "KDJ(9) < 20"
+    output_type: boolean
+
+  - id: kdj_k_overbought
+    name: "KDJ K 值超买 (>80)"
+    name_en: "KDJ K Overbought"
+    tags: ["超买", "回调"]
+    description: "K 值高于 80，短期超买"
+    formula: "KDJ(9) > 80"
+    output_type: boolean
+
+  - id: kdj_rise_from_oversold
+    name: "KDJ 超卖反弹（由 <20 升至 >20）"
+    name_en: "KDJ Rise from Oversold"
+    tags: ["反弹", "启动"]
+    description: "K 值上穿 20，超卖区反弹"
+    formula: "KDJ(9) cross_up 20"
+    output_type: boolean
+
+  - id: kdj_fall_from_overbought
+    name: "KDJ 超买回落（由 >80 降至 <80）"
+    name_en: "KDJ Fall from Overbought"
+    tags: ["回调", "减仓"]
+    description: "K 值下穿 80，超买区回落"
+    formula: "KDJ(9) cross_down 80"
+    output_type: boolean
+
+  - id: kdj_k_above_50
+    name: "KDJ K 值在 50 之上"
+    name_en: "KDJ K above 50"
+    tags: ["多头区"]
+    description: "K 值在多空分界线之上"
+    formula: "KDJ(9) > 50"
+    output_type: boolean
+
+  - id: kdj_k_below_50
+    name: "KDJ K 值在 50 之下"
+    name_en: "KDJ K below 50"
+    tags: ["空头区"]
+    description: "K 值在多空分界线之下"
+    formula: "KDJ(9) < 50"
+    output_type: boolean
+
+  - id: kdj_extreme_oversold
+    name: "KDJ 极度超卖 (<10)"
+    name_en: "KDJ Extreme Oversold"
+    tags: ["极端", "超卖"]
+    description: "K 值极低，超卖信号强烈"
+    formula: "KDJ(9) < 10"
+    output_type: boolean
+
+  - id: kdj_extreme_overbought
+    name: "KDJ 极度超买 (>90)"
+    name_en: "KDJ Extreme Overbought"
+    tags: ["极端", "超买"]
+    description: "K 值极高，超买信号强烈"
+    formula: "KDJ(9) > 90"
+    output_type: boolean
+
+  - id: kdj_momentum_up
+    name: "KDJ K 上升动能"
+    name_en: "KDJ K Momentum Up"
+    tags: ["动能", "上涨"]
+    description: "K 值相对 5 日前上升（动能向上）"
+    formula: "KDJ(9) > MA(KDJ(9), 5)"
+    output_type: boolean
+
+  - id: kdj_scalar
+    name: "KDJ K 值（标量）"
+    name_en: "KDJ K value"
+    tags: ["标量", "超买超卖"]
+    description: "直接输出 K 值，0~100"
+    formula: "KDJ(9)"
+    output_type: scalar
+
+  # ═══════════════════════════════════════════════════════════
+  # 6. RSI 体系
+  # ═══════════════════════════════════════════════════════════
+  - id: rsi_14_oversold
+    name: "RSI(14) 超卖 (<30)"
+    name_en: "RSI14 Oversold"
+    tags: ["超卖", "反弹", "经典"]
+    description: "14 日 RSI 低于 30，典型超卖"
+    formula: "RSI(14) < 30"
+    output_type: boolean
+
+  - id: rsi_14_overbought
+    name: "RSI(14) 超买 (>70)"
+    name_en: "RSI14 Overbought"
+    tags: ["超买", "回调", "经典"]
+    description: "14 日 RSI 高于 70，典型超买"
+    formula: "RSI(14) > 70"
+    output_type: boolean
+
+  - id: rsi_14_extreme_oversold
+    name: "RSI(14) 极度超卖 (<20)"
+    name_en: "RSI14 Extreme Oversold"
+    tags: ["极端", "反弹"]
+    description: "14 日 RSI 极低，强反弹信号"
+    formula: "RSI(14) < 20"
+    output_type: boolean
+
+  - id: rsi_14_extreme_overbought
+    name: "RSI(14) 极度超买 (>80)"
+    name_en: "RSI14 Extreme Overbought"
+    tags: ["极端", "警示"]
+    description: "14 日 RSI 极高，警惕回调"
+    formula: "RSI(14) > 80"
+    output_type: boolean
+
+  - id: rsi_6_oversold
+    name: "RSI(6) 超卖 (<20)"
+    name_en: "RSI6 Oversold"
+    tags: ["超卖", "短线"]
+    description: "6 日 RSI 超卖（短周期更敏感）"
+    formula: "RSI(6) < 20"
+    output_type: boolean
+
+  - id: rsi_14_rise_from_oversold
+    name: "RSI(14) 超卖反弹（上穿 30）"
+    name_en: "RSI14 Rise from Oversold"
+    tags: ["反弹", "启动"]
+    description: "RSI 由低于 30 上穿 30，超卖反弹"
+    formula: "RSI(14) cross_up 30"
+    output_type: boolean
+
+  - id: rsi_14_fall_from_overbought
+    name: "RSI(14) 超买回落（下穿 70）"
+    name_en: "RSI14 Fall from Overbought"
+    tags: ["回调", "警示"]
+    description: "RSI 由高于 70 下穿 70，超买回落"
+    formula: "RSI(14) cross_down 70"
+    output_type: boolean
+
+  - id: rsi_14_above_50
+    name: "RSI(14) 在 50 之上（多头）"
+    name_en: "RSI14 above 50"
+    tags: ["多头", "中线"]
+    description: "RSI 在多空分界线之上"
+    formula: "RSI(14) > 50"
+    output_type: boolean
+
+  - id: rsi_14_cross_50_up
+    name: "RSI(14) 上穿 50"
+    name_en: "RSI14 cross above 50"
+    tags: ["反转", "多头"]
+    description: "RSI 上穿多空分界线 50，多头启动"
+    formula: "RSI(14) cross_up 50"
+    output_type: boolean
+
+  - id: rsi_14_scalar
+    name: "RSI(14) 标量值"
+    name_en: "RSI14 value"
+    tags: ["标量"]
+    description: "RSI(14) 原始值，0~100"
+    formula: "RSI(14)"
+    output_type: scalar
+
+  # ═══════════════════════════════════════════════════════════
+  # 7. 动量 / 趋势
+  # ═══════════════════════════════════════════════════════════
+  - id: momentum_5d
+    name: "5 日动量"
+    name_en: "Momentum 5d"
+    tags: ["动量", "短线", "标量"]
+    description: "近 5 日涨跌幅"
+    formula: "PCT(close, 5)"
+    output_type: scalar
+
+  - id: momentum_20d
+    name: "20 日动量"
+    name_en: "Momentum 20d"
+    tags: ["动量", "中线", "标量"]
+    description: "近 20 日涨跌幅（月动量）"
+    formula: "PCT(close, 20)"
+    output_type: scalar
+
+  - id: momentum_60d
+    name: "60 日动量"
+    name_en: "Momentum 60d"
+    tags: ["动量", "中长线", "标量"]
+    description: "近 60 日涨跌幅（季动量）"
+    formula: "PCT(close, 60)"
+    output_type: scalar
+
+  - id: new_high_20d
+    name: "创 20 日新高"
+    name_en: "New High 20d"
+    tags: ["突破", "新高"]
+    description: "收盘创过去 20 日新高"
+    formula: "close >= MAX(high, 20)"
+    output_type: boolean
+
+  - id: new_high_60d
+    name: "创 60 日新高"
+    name_en: "New High 60d"
+    tags: ["突破", "新高", "强势"]
+    description: "收盘创过去 60 日新高"
+    formula: "close >= MAX(high, 60)"
+    output_type: boolean
+
+  - id: new_high_250d
+    name: "创 250 日新高（年内新高）"
+    name_en: "New High 250d"
+    tags: ["突破", "牛股", "长线"]
+    description: "收盘创年内新高，牛股特征"
+    formula: "close >= MAX(high, 250)"
+    output_type: boolean
+
+  - id: new_low_20d
+    name: "创 20 日新低"
+    name_en: "New Low 20d"
+    tags: ["破位", "新低"]
+    description: "收盘创过去 20 日新低"
+    formula: "close <= MIN(low, 20)"
+    output_type: boolean
+
+  - id: new_low_60d
+    name: "创 60 日新低"
+    name_en: "New Low 60d"
+    tags: ["破位", "弱势"]
+    description: "收盘创过去 60 日新低"
+    formula: "close <= MIN(low, 60)"
+    output_type: boolean
+
+  - id: momentum_strong_20d
+    name: "20 日强动量（>10%）"
+    name_en: "Strong Momentum 20d"
+    tags: ["强势", "动量"]
+    description: "近 20 日涨幅超过 10%"
+    formula: "PCT(close, 20) > 0.1"
+    output_type: boolean
+
+  - id: momentum_weak_20d
+    name: "20 日弱动量（<-10%）"
+    name_en: "Weak Momentum 20d"
+    tags: ["弱势", "动量"]
+    description: "近 20 日跌幅超过 10%"
+    formula: "PCT(close, 20) < -0.1"
+    output_type: boolean
+
+  # ═══════════════════════════════════════════════════════════
+  # 8. 波动率 / 成交量
+  # ═══════════════════════════════════════════════════════════
+  - id: volume_2x
+    name: "成交量 2 倍放大"
+    name_en: "Volume 2x"
+    tags: ["放量", "短线"]
+    description: "今日成交量超过 20 日均量 2 倍"
+    formula: "volume > MA(volume, 20) * 2"
+    output_type: boolean
+
+  - id: volume_3x
+    name: "成交量 3 倍放大"
+    name_en: "Volume 3x"
+    tags: ["放量", "异动"]
+    description: "今日成交量超过 20 日均量 3 倍，强烈异动"
+    formula: "volume > MA(volume, 20) * 3"
+    output_type: boolean
+
+  - id: volume_shrink_half
+    name: "成交量萎缩一半"
+    name_en: "Volume Shrink Half"
+    tags: ["缩量", "观望"]
+    description: "今日成交量不到 20 日均量一半"
+    formula: "volume < MA(volume, 20) * 0.5"
+    output_type: boolean
+
+  - id: volume_breakout_up
+    name: "放量突破（价升量增）"
+    name_en: "Volume Breakout Up"
+    tags: ["突破", "放量", "经典"]
+    description: "创 20 日新高 + 放量 1.5 倍"
+    formula: "close >= MAX(high, 20) AND volume > MA(volume, 20) * 1.5"
+    output_type: boolean
+
+  - id: volatility_20d
+    name: "20 日波动率（收盘价 STD）"
+    name_en: "Volatility 20d"
+    tags: ["波动率", "标量"]
+    description: "20 日收盘价标准差"
+    formula: "STD(close, 20)"
+    output_type: scalar
+
+  - id: volatility_normalized_20d
+    name: "20 日标准化波动率"
+    name_en: "Normalized Volatility 20d"
+    tags: ["波动率", "相对", "标量"]
+    description: "标准差 / 均价，跨股票可比"
+    formula: "STD(close, 20) / MA(close, 20)"
+    output_type: scalar
+
+  - id: amplitude_20d
+    name: "20 日振幅"
+    name_en: "Amplitude 20d"
+    tags: ["振幅", "标量"]
+    description: "20 日最高 / 20 日最低 - 1"
+    formula: "MAX(high, 20) / MIN(low, 20) - 1"
+    output_type: scalar
+
+  - id: high_volatility
+    name: "高波动（标准化波动 >3%）"
+    name_en: "High Volatility"
+    tags: ["波动率", "风险"]
+    description: "20 日标准化波动率超过 3%"
+    formula: "STD(close, 20) / MA(close, 20) > 0.03"
+    output_type: boolean
+
+  - id: low_volatility
+    name: "低波动（标准化波动 <1%）"
+    name_en: "Low Volatility"
+    tags: ["波动率", "稳定"]
+    description: "20 日标准化波动率低于 1%"
+    formula: "STD(close, 20) / MA(close, 20) < 0.01"
+    output_type: boolean
+
+  - id: volume_trend_up
+    name: "成交量向上趋势"
+    name_en: "Volume Trend Up"
+    tags: ["放量", "趋势"]
+    description: "5 日均量 > 20 日均量"
+    formula: "MA(volume, 5) > MA(volume, 20)"
+    output_type: boolean
