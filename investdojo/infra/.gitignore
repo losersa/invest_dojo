@@ -1,0 +1,7 @@
+# 数据目录不要提交
+redis-data/
+minio-data/
+
+# 本地环境变量
+.env
+.env.local

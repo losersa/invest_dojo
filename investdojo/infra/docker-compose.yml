@@ -1,0 +1,88 @@
+# InvestDojo 本地开发基础设施
+#
+# 启动：./scripts/dev-up.sh
+# 停止：./scripts/dev-down.sh
+# 重置：./scripts/dev-reset.sh (清空数据)
+#
+# 对应文档：docs/architecture/00_系统总览.md §4.3
+
+name: investdojo-dev
+
+services:
+  # ─────────────────────────────────────────
+  # Redis — 缓存 + Pub/Sub + Celery broker
+  # ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: investdojo-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis-data:/data
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 512mb
+      - --maxmemory-policy
+      - allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # ─────────────────────────────────────────
+  # MinIO — 对象存储（模型文件/报告/Notebook）
+  # ─────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: investdojo-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web Console
+    volumes:
+      - ./minio-data:/data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-investdojo}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-investdojo_dev_only}
+      MINIO_BROWSER_REDIRECT_URL: http://localhost:9001
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ─────────────────────────────────────────
+  # MinIO 初始化 — 自动创建 bucket
+  # ─────────────────────────────────────────
+  minio-init:
+    image: minio/mc:latest
+    container_name: investdojo-minio-init
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      /usr/bin/mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-investdojo} ${MINIO_ROOT_PASSWORD:-investdojo_dev_only};
+      /usr/bin/mc mb --ignore-existing local/investdojo;
+      /usr/bin/mc mb --ignore-existing local/investdojo/models;
+      /usr/bin/mc mb --ignore-existing local/investdojo/backtests;
+      /usr/bin/mc mb --ignore-existing local/investdojo/notebooks;
+      /usr/bin/mc mb --ignore-existing local/investdojo/exports;
+      /usr/bin/mc mb --ignore-existing local/investdojo/klines_archive;
+      /usr/bin/mc anonymous set download local/investdojo/scenarios 2>/dev/null || true;
+      echo '✅ MinIO buckets 初始化完成';
+      exit 0;
+      "
+    restart: "no"
+
+# 说明：
+# - 不使用 network 声明，走默认 bridge（OrbStack 对此优化）
+# - 数据目录 mount 到宿主机 ./redis-data ./minio-data（方便查看/备份/清理）
+# - 端口映射到 localhost，开发时可直接用本机工具连
