@@ -35,10 +35,11 @@ async def root() -> dict:
             "/api/v1/factors",
             "/api/v1/factors/categories",
             "/api/v1/factors/tags",
+            "/api/v1/factors/validate",
             "/api/v1/factors/{id}",
             "/api/v1/factors/{id}/history",
         ],
-        "status": "Epic 2 骨架 · 读接口完整；写 + 计算接口见 Epic 3 (T-3.01+)",
+        "status": "Epic 3 · T-3.01 DSL 解析器已就位；计算引擎见 T-3.02",
     }
 
 

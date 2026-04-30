@@ -3,8 +3,8 @@
 MVP（T-2.01）：读接口完整
 Epic 3（T-3.01+）：写接口、计算接口
 
-⚠️ 注意：FastAPI 按路由声明顺序匹配。`/factors/categories` / `/factors/tags` 必须
-写在 `/factors/{factor_id}` 之前，否则会被 path parameter 吞掉。
+⚠️ 注意：FastAPI 按路由声明顺序匹配。`/factors/categories` / `/factors/tags` / `/factors/validate`
+必须写在 `/factors/{factor_id}` 之前，否则会被 path parameter 吞掉。
 """
 
 from __future__ import annotations
@@ -19,7 +19,9 @@ from common_utils import (
     parse_sort,
     parse_tags,
 )
-from fastapi import APIRouter, Depends, Query
+from factors import DSLError, UnknownFunctionError, dump_ast, parse_formula
+from fastapi import APIRouter, Body, Depends, Query
+from pydantic import BaseModel, Field
 
 from common import get_logger
 from common.supabase_client import get_supabase_client
@@ -176,6 +178,67 @@ async def list_tags():
     return {"data": data}
 
 
+# ─── 因子 DSL 校验（T-3.01）─────────────────────────────
+class ValidateFormulaRequest(BaseModel):
+    """POST /factors/validate 请求体
+
+    参考 docs/api/02_因子库API.md §4.4
+    """
+
+    formula: str = Field(..., description="DSL 表达式", examples=["MA(close, 20) cross_up MA(close, 60)"])
+    formula_type: str = Field("dsl", pattern="^(dsl|python)$")
+
+
+@router.post("/factors/validate", summary="校验因子公式（不保存）")
+async def validate_formula(payload: ValidateFormulaRequest = Body(...)):
+    """解析 + 语义校验 + 推断，返回 AST 和推断结果
+
+    - 合法：`valid=true` + `parsed_ast` + `inferred_output_type` + `inferred_lookback`
+    - 非法：`valid=false` + `error.code` ∈ {INVALID_FORMULA, UNKNOWN_FUNCTION} + `error.detail.position`
+
+    注：Python 公式暂不支持（走 mock 返回 valid=true），留给后续 Epic。
+    """
+    if payload.formula_type == "python":
+        # MVP：Python 公式走 mock 通过（Epic 3 后期再实现 sandbox 解析）
+        return {
+            "data": {
+                "valid": True,
+                "parsed_ast": None,
+                "inferred_output_type": "scalar",
+                "inferred_lookback": 0,
+                "preview_result": [],
+                "warnings": ["Python formula parsing is not yet implemented; treating as scalar."],
+            }
+        }
+
+    try:
+        result = parse_formula(payload.formula)
+    except (DSLError, UnknownFunctionError) as e:
+        return {
+            "data": {
+                "valid": False,
+                "parsed_ast": None,
+                "error": {
+                    "code": e.code,
+                    "message": e.message,
+                    "detail": e.to_detail(),
+                },
+            }
+        }
+
+    return {
+        "data": {
+            "valid": True,
+            "parsed_ast": dump_ast(result.ast),
+            "inferred_output_type": result.output_type,
+            "inferred_lookback": result.lookback_days,
+            "preview_result": [],  # T-3.02 接入真实计算后填充
+            "warnings": [],
+        }
+    }
+
+
+# ─── /factors/{factor_id} 必须放在所有静态路径之后 ────────
 @router.get("/factors/{factor_id}", summary="因子详情")
 async def get_factor(
     factor_id: str,
