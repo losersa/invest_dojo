@@ -1,7 +1,8 @@
 """infer-svc 工具：pydantic 模型、as_of 校验、错误响应"""
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import HTTPException
@@ -67,6 +68,7 @@ class EnsembleSubModel(BaseModel):
 
 class EnsembleRequest(BaseModel):
     """集成推理"""
+
     models: list[EnsembleSubModel] = Field(..., min_length=2, max_length=10)
     symbols: list[str] = Field(..., min_length=1, max_length=50)
     as_of: str
@@ -132,14 +134,14 @@ def parse_and_validate_as_of(as_of: str) -> datetime:
             s += "+00:00"
         dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
     except Exception as exc:
         raise api_error(
             ErrorCode.INVALID_PARAM,
             f"Invalid as_of format: {as_of!r}. Expected ISO 8601.",
         ) from exc
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     # 允许宽 60 秒 clock skew（联动时钟可能稍领先）
     if dt > now.replace(second=0, microsecond=0):
         # 严格一点：as_of 不能领先当前墙钟超过 60 秒

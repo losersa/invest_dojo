@@ -1,17 +1,18 @@
 """股票元数据接口"""
+
 from __future__ import annotations
 
+from common_utils import (
+    ErrorCode,
+    api_error,
+    paginate_response,
+    pagination_params,
+    split_symbols,
+)
 from fastapi import APIRouter, Depends, Query
 
 from common import get_logger
 from common.supabase_client import get_supabase_client
-from common_utils import (
-    ErrorCode,
-    api_error,
-    pagination_params,
-    paginate_response,
-    split_symbols,
-)
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -23,9 +24,7 @@ async def list_symbols(
     market: str | None = Query(None, pattern="^(SH|SZ|BJ)$"),
     industry: str | None = Query(None),
     status: str = Query("normal"),
-    universe: str | None = Query(
-        None, pattern="^(hs300|zz500|zz1000|all)$", description="指数池"
-    ),
+    universe: str | None = Query(None, pattern="^(hs300|zz500|zz1000|all)$", description="指数池"),
     search: str | None = Query(None, description="按名称/代码模糊搜索"),
     pg: dict = Depends(pagination_params),
 ):
@@ -41,8 +40,12 @@ async def list_symbols(
     if industry:
         filters["industry"] = f"eq.{industry}"
     # 状态别名映射：前端约定 normal/suspended/delisted；DB 里是 active/suspended/delisted
-    STATUS_ALIAS = {"normal": "active", "active": "active",
-                    "suspended": "suspended", "delisted": "delisted"}
+    STATUS_ALIAS = {
+        "normal": "active",
+        "active": "active",
+        "suspended": "suspended",
+        "delisted": "delisted",
+    }
     if status and status != "all":
         db_status = STATUS_ALIAS.get(status, status)
         filters["status"] = f"eq.{db_status}"
@@ -50,6 +53,7 @@ async def list_symbols(
         # tags 是 JSONB array，用 cs.["..."]（JSONB 语法，不是 PostgreSQL array 的 {})
         tag = {"hs300": "沪深300", "zz500": "中证500", "zz1000": "中证1000"}[universe]
         import json as _json
+
         filters["tags"] = f"cs.{_json.dumps([tag], ensure_ascii=False)}"
     if search:
         # 同时匹配 code / name

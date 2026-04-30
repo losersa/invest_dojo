@@ -8,6 +8,7 @@
 
 注意：dummy_train 测试会真的写 Supabase，因此标 integration。
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -131,13 +132,16 @@ def test_dummy_train_eager_mode():
     # 先创建 job 记录
     job_id = new_job_id()
     client = get_supabase_client()
-    client.insert("training_jobs", {
-        "job_id": job_id,
-        "status": "pending",
-        "progress": 0,
-        "stage": "queued",
-        "config": {"algorithm": "dummy", "simulated_duration_sec": 0},
-    })
+    client.insert(
+        "training_jobs",
+        {
+            "job_id": job_id,
+            "status": "pending",
+            "progress": 0,
+            "stage": "queued",
+            "config": {"algorithm": "dummy", "simulated_duration_sec": 0},
+        },
+    )
 
     try:
         # eager 模式下 .delay() 会同步执行

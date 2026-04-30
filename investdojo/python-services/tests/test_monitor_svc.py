@@ -1,11 +1,10 @@
 """monitor-svc 单元测试"""
+
 from __future__ import annotations
 
 import importlib.util
 import sys
 from pathlib import Path
-
-import pytest
 
 SVC_DIR = Path(__file__).parent.parent / "monitor-svc"
 

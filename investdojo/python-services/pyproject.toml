@@ -71,9 +71,21 @@ ignore = ["E501"]                  # 行长由 formatter 处理
 
 [tool.ruff.lint.per-file-ignores]
 # 服务目录名带连字符是约定（feature-svc / train-svc 等），不是 Python 模块名规范
-"*-svc/*.py" = ["N999"]
-# 测试里 fixture 变量可能不被 ruff 识别
-"tests/*.py" = ["B008"]
+"*-svc/*.py" = [
+  "N999",   # 模块名（连字符目录）
+  "B008",   # FastAPI 惯用：Depends / Query 写在参数默认值
+  "N806",   # 变量名大小写（有时需要用 `Symbol` 等业务术语）
+]
+"*-svc/routers/*.py" = [
+  "N999",
+  "B008",
+  "N806",
+]
+# 测试里 pytest.raises(Exception) 是常规用法
+"tests/*.py" = [
+  "B008",
+  "B017",   # pytest.raises(Exception) 过于宽泛
+]
 
 # ── pytest ──
 [tool.pytest.ini_options]

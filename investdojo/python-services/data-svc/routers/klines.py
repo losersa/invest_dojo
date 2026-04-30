@@ -5,22 +5,25 @@
 - 分页上限 1000 行，超过必须分页
 - 支持 long / wide 两种响应格式
 """
+
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from datetime import UTC
 
-from common import get_logger
-from common.supabase_client import get_supabase_client
 from common_utils import (
     ErrorCode,
     api_error,
     as_of_to_utc_iso,
-    pagination_params,
     paginate_response,
+    pagination_params,
     parse_as_of,
     parse_date,
     split_symbols,
 )
+from fastapi import APIRouter, Depends, Query
+
+from common import get_logger
+from common.supabase_client import get_supabase_client
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -98,7 +101,7 @@ def _date_to_beijing_utc(d: str, *, hour: int = 0, minute: int = 0, second: int 
 
     dt = dt.replace(hour=hour, minute=minute, second=second)
     dt = dt.replace(tzinfo=timezone(timedelta(hours=8)))
-    return dt.astimezone(timezone.utc).isoformat()
+    return dt.astimezone(UTC).isoformat()
 
 
 def _normalize_dt(rows: list[dict], timeframe: str) -> None:

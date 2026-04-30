@@ -1,19 +1,18 @@
 """新闻接口"""
+
 from __future__ import annotations
 
+from common_utils import (
+    as_of_to_utc_iso,
+    paginate_response,
+    pagination_params,
+    parse_as_of,
+    parse_date,
+)
 from fastapi import APIRouter, Depends, Query
 
 from common import get_logger
 from common.supabase_client import get_supabase_client
-from common_utils import (
-    ErrorCode,
-    api_error,
-    as_of_to_utc_iso,
-    pagination_params,
-    paginate_response,
-    parse_as_of,
-    parse_date,
-)
 
 logger = get_logger(__name__)
 router = APIRouter()

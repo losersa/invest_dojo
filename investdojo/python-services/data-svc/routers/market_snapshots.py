@@ -1,10 +1,7 @@
 """市场快照接口"""
+
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
-
-from common import get_logger
-from common.supabase_client import get_supabase_client
 from common_utils import (
     ErrorCode,
     api_error,
@@ -12,6 +9,10 @@ from common_utils import (
     parse_as_of,
     parse_date,
 )
+from fastapi import APIRouter, Query
+
+from common import get_logger
+from common.supabase_client import get_supabase_client
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -20,9 +21,7 @@ router = APIRouter()
 @router.get("/market/snapshot", summary="查询市场快照")
 async def get_snapshot(
     date: str = Query(..., description="查询日期 YYYY-MM-DD"),
-    as_of: str | None = Query(
-        None, description="若设置，date >= as_of 时拒绝返回（防未来函数）"
-    ),
+    as_of: str | None = Query(None, description="若设置，date >= as_of 时拒绝返回（防未来函数）"),
 ):
     d = parse_date(date, name="date")
     if not d:

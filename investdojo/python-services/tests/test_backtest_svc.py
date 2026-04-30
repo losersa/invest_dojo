@@ -1,4 +1,5 @@
 """backtest-svc 单元测试"""
+
 from __future__ import annotations
 
 import importlib.util
@@ -6,7 +7,6 @@ import sys
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException
 from pydantic import ValidationError
 
 SVC_DIR = Path(__file__).parent.parent / "backtest-svc"
@@ -125,8 +125,16 @@ def test_mock_backtest_shape():
 
     s = r["summary"]
     # 必须有的字段
-    for k in ("total_return", "annual_return", "sharpe", "max_drawdown",
-              "volatility", "total_trades", "ic", "ir"):
+    for k in (
+        "total_return",
+        "annual_return",
+        "sharpe",
+        "max_drawdown",
+        "volatility",
+        "total_trades",
+        "ic",
+        "ir",
+    ):
         assert k in s
 
     # Summary schema 校验

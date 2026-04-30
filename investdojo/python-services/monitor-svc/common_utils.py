@@ -1,4 +1,5 @@
 """monitor-svc 工具：聚合各 svc /health/ready + DB 业务计数"""
+
 from __future__ import annotations
 
 import asyncio
@@ -34,16 +35,36 @@ def get_registered_services() -> list[ServiceEntry]:
     """返回所有兄弟微服务。URL 从 settings.*_svc_port 推导。"""
     host = "http://localhost"
     return [
-        ServiceEntry(name="data-svc", url=f"{host}:{settings.data_svc_port}",
-                     port=settings.data_svc_port, role="数据 API"),
-        ServiceEntry(name="feature-svc", url=f"{host}:{settings.feature_svc_port}",
-                     port=settings.feature_svc_port, role="因子库 / 因子计算"),
-        ServiceEntry(name="train-svc", url=f"{host}:{settings.train_svc_port}",
-                     port=settings.train_svc_port, role="训练任务"),
-        ServiceEntry(name="infer-svc", url=f"{host}:{settings.infer_svc_port}",
-                     port=settings.infer_svc_port, role="推理"),
-        ServiceEntry(name="backtest-svc", url=f"{host}:{settings.backtest_svc_port}",
-                     port=settings.backtest_svc_port, role="回测"),
+        ServiceEntry(
+            name="data-svc",
+            url=f"{host}:{settings.data_svc_port}",
+            port=settings.data_svc_port,
+            role="数据 API",
+        ),
+        ServiceEntry(
+            name="feature-svc",
+            url=f"{host}:{settings.feature_svc_port}",
+            port=settings.feature_svc_port,
+            role="因子库 / 因子计算",
+        ),
+        ServiceEntry(
+            name="train-svc",
+            url=f"{host}:{settings.train_svc_port}",
+            port=settings.train_svc_port,
+            role="训练任务",
+        ),
+        ServiceEntry(
+            name="infer-svc",
+            url=f"{host}:{settings.infer_svc_port}",
+            port=settings.infer_svc_port,
+            role="推理",
+        ),
+        ServiceEntry(
+            name="backtest-svc",
+            url=f"{host}:{settings.backtest_svc_port}",
+            port=settings.backtest_svc_port,
+            role="回测",
+        ),
     ]
 
 
@@ -56,7 +77,11 @@ async def _probe_one(client: httpx.AsyncClient, svc: ServiceEntry) -> dict[str, 
     try:
         resp = await client.get(f"{svc.url}/health", timeout=2.0)
         latency_ms = int((time.perf_counter() - t) * 1000)
-        body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+        body = (
+            resp.json()
+            if resp.headers.get("content-type", "").startswith("application/json")
+            else {}
+        )
         return {
             "name": svc.name,
             "url": svc.url,
@@ -137,9 +162,7 @@ async def collect_stats() -> dict[str, Any]:
 
     async def _count(table: str, filters: dict | None = None) -> int:
         try:
-            return await loop.run_in_executor(
-                None, lambda: client.count(table, filters=filters)
-            )
+            return await loop.run_in_executor(None, lambda: client.count(table, filters=filters))
         except Exception as e:
             logger.warning("monitor.count_failed", table=table, error=str(e))
             return -1
@@ -151,9 +174,10 @@ async def collect_stats() -> dict[str, Any]:
         ("scenarios", _count("scenarios")),
         ("news", _count("news")),
         ("market_snapshots", _count("market_snapshots")),
-        ("factor_definitions", _count("factor_definitions",
-                                       {"visibility": "eq.public",
-                                        "deprecated_at": "is.null"})),
+        (
+            "factor_definitions",
+            _count("factor_definitions", {"visibility": "eq.public", "deprecated_at": "is.null"}),
+        ),
         ("training_jobs_total", _count("training_jobs")),
         ("training_jobs_running", _count("training_jobs", {"status": "eq.running"})),
         ("training_jobs_completed", _count("training_jobs", {"status": "eq.completed"})),
@@ -163,7 +187,7 @@ async def collect_stats() -> dict[str, Any]:
     ]
 
     results = await asyncio.gather(*[c for _, c in keys_and_calls])
-    return {k: v for (k, _), v in zip(keys_and_calls, results)}
+    return {k: v for (k, _), v in zip(keys_and_calls, results, strict=True)}
 
 
 # ──────────────────────────────────────────

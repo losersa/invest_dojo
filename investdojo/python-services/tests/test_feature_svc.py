@@ -4,6 +4,7 @@
 - 工具函数（parse_sort / parse_tags / paginate_response）
 - 路由 listing 路径冲突（/factors/categories 不被 {factor_id} 吞掉）
 """
+
 from __future__ import annotations
 
 import importlib.util

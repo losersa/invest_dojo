@@ -1,4 +1,5 @@
 """backtest-svc · pydantic 模型 + 工具"""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -38,6 +39,7 @@ BacktestStatus = Literal["pending", "running", "completed", "failed", "cancelled
 # ──────────────────────────────────────────
 class StrategySpec(BaseModel):
     """策略来源（四选一）"""
+
     type: StrategyType
     factor_id: str | None = None
     composite_id: str | None = None
@@ -75,9 +77,7 @@ class PositionSizing(BaseModel):
     method: Literal["equal_weight", "signal_weight", "fixed_amount", "custom"] = "equal_weight"
     max_positions: int = Field(default=10, ge=1, le=100)
     single_stock_pct: float = Field(default=0.1, gt=0, le=1)
-    rebalance_frequency: Literal[
-        "daily", "weekly", "monthly", "signal_triggered"
-    ] = "daily"
+    rebalance_frequency: Literal["daily", "weekly", "monthly", "signal_triggered"] = "daily"
 
 
 class AdvancedOptions(BaseModel):

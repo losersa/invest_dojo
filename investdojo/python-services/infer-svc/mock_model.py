@@ -8,14 +8,14 @@ MVP 用途：
 - 同 (model_id, symbol, as_of) 组合 → 同输出
 - 用 hash 驱动随机数，保证可重现
 """
+
 from __future__ import annotations
 
 import hashlib
 import random
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
-
 
 # 内置 mock 模型白名单（避免用户随便写个 id 都能跑通）
 KNOWN_MOCK_MODELS = {
@@ -131,7 +131,7 @@ def predict_one(
     elapsed_ms = max(1, int((time.perf_counter() - t_start) * 1000))
 
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "as_of": as_of,
         "symbol": symbol,
         "action": action,

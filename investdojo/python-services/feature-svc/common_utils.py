@@ -1,4 +1,5 @@
 """feature-svc 工具：和 data-svc 类似的分页 / 错误 / 参数解析"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -57,8 +58,13 @@ def pagination_params(
 
 
 VALID_CATEGORIES = {
-    "technical", "valuation", "growth", "sentiment",
-    "fundamental", "macro", "custom",
+    "technical",
+    "valuation",
+    "growth",
+    "sentiment",
+    "fundamental",
+    "macro",
+    "custom",
 }
 
 CATEGORY_LABELS = {

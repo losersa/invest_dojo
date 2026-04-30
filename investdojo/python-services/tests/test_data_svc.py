@@ -5,6 +5,7 @@
 2. 分页契约（超过 1000 行必须分页）
 3. market/snapshot 未来函数拒绝
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -68,6 +69,7 @@ def test_parse_as_of_iso():
 
 def test_parse_as_of_invalid():
     from fastapi import HTTPException
+
     with pytest.raises(HTTPException):
         parse_as_of("not-a-date")
 
@@ -111,6 +113,7 @@ def test_split_symbols_empty():
 
 def test_split_symbols_too_many():
     from fastapi import HTTPException
+
     with pytest.raises(HTTPException):
         split_symbols(",".join([str(i) for i in range(100)]), max_count=50)
 

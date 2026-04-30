@@ -3,7 +3,6 @@
 启动：uvicorn main:app --app-dir data-svc --port 8000
 本地开发：make dev（通过 Procfile）
 """
-from common import create_app, get_logger, settings
 
 from routers import (
     fundamentals_router,
@@ -13,6 +12,8 @@ from routers import (
     scenarios_router,
     symbols_router,
 )
+
+from common import create_app, get_logger, settings
 
 logger = get_logger("data-svc")
 

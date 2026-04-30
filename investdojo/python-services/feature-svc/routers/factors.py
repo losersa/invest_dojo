@@ -6,22 +6,23 @@ Epic 3（T-3.01+）：写接口、计算接口
 ⚠️ 注意：FastAPI 按路由声明顺序匹配。`/factors/categories` / `/factors/tags` 必须
 写在 `/factors/{factor_id}` 之前，否则会被 path parameter 吞掉。
 """
+
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
-
-from common import get_logger
-from common.supabase_client import get_supabase_client
 from common_utils import (
-    ErrorCode,
     CATEGORY_LABELS,
-    api_error,
     VALID_CATEGORIES,
+    ErrorCode,
+    api_error,
     paginate_response,
     pagination_params,
     parse_sort,
     parse_tags,
 )
+from fastapi import APIRouter, Depends, Query
+
+from common import get_logger
+from common.supabase_client import get_supabase_client
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -93,6 +94,7 @@ async def list_factors(
     tag_list = parse_tags(tags)
     if tag_list:
         import json as _json
+
         filters["tags"] = f"cs.{_json.dumps(tag_list, ensure_ascii=False)}"
 
     if search:
@@ -147,11 +149,13 @@ async def list_categories():
 
     data = []
     for cat, label in CATEGORY_LABELS.items():
-        data.append({
-            "category": cat,
-            "label": label,
-            "count": counts.get(cat, 0),
-        })
+        data.append(
+            {
+                "category": cat,
+                "label": label,
+                "count": counts.get(cat, 0),
+            }
+        )
     return {"data": data}
 
 
@@ -168,10 +172,7 @@ async def list_tags():
     for r in rows:
         for t in r.get("tags") or []:
             tag_count[t] = tag_count.get(t, 0) + 1
-    data = [
-        {"tag": k, "count": v}
-        for k, v in sorted(tag_count.items(), key=lambda x: -x[1])
-    ]
+    data = [{"tag": k, "count": v} for k, v in sorted(tag_count.items(), key=lambda x: -x[1])]
     return {"data": data}
 
 

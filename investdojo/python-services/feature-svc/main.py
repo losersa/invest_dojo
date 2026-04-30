@@ -10,9 +10,10 @@
 
 对应文档：docs/api/02_因子库API.md
 """
-from common import create_app, get_logger, settings
 
 from routers import factors_router
+
+from common import create_app, get_logger, settings
 
 logger = get_logger("feature-svc")
 

@@ -7,6 +7,7 @@
 
 Epic 4（T-4.xx）会替换为 VectorBT / Backtrader 真引擎。
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -14,13 +15,14 @@ import math
 import random
 import time
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 
 def _seed_from_config(config: dict) -> int:
     """配置 hash → 稳定 seed"""
     import json
+
     blob = json.dumps(config, sort_keys=True, ensure_ascii=False)
     h = hashlib.sha256(blob.encode()).digest()
     return int.from_bytes(h[:8], byteorder="big", signed=False)
@@ -93,7 +95,6 @@ def run_mock_backtest(config: dict) -> dict[str, Any]:
     start = config["start"]
     end = config["end"]
     initial_capital = float(config.get("initial_capital", 100000))
-    benchmark_code = config.get("benchmark", "000300")
     strategy_type = config["strategy"]["type"]
 
     dates = _business_days(start, end)
@@ -152,10 +153,7 @@ def run_mock_backtest(config: dict) -> dict[str, Any]:
         sharpe = (mean_r * 252) / (sigma * math.sqrt(252)) if sigma > 0 else 0.0
         # sortino 用下行波动
         downside = [r for r in daily_rets if r < 0]
-        ds = (
-            math.sqrt(sum(r ** 2 for r in downside) / len(downside))
-            if downside else 0.001
-        )
+        ds = math.sqrt(sum(r**2 for r in downside) / len(downside)) if downside else 0.001
         sortino = (mean_r * 252) / (ds * math.sqrt(252)) if ds > 0 else 0.0
     else:
         sigma = 0.0
@@ -246,18 +244,22 @@ def run_mock_backtest(config: dict) -> dict[str, Any]:
             price = round(rng.uniform(10, 1700), 2)
             qty = rng.choice([100, 200, 500])
             amount = round(price * qty, 2)
-            trades.append({
-                "id": f"t_{uuid.uuid4().hex[:8]}",
-                "symbol": sym,
-                "side": side,
-                "datetime": dates[min(i * (n // 5), n - 1)] + "T10:00:00Z",
-                "price": price,
-                "quantity": qty,
-                "amount": amount,
-                "commission": round(max(5.0, amount * 0.0003), 2),
-                "reason": "mock signal",
-                "pnl": round(rng.uniform(-amount * 0.1, amount * 0.15), 2) if side == "SELL" else None,
-            })
+            trades.append(
+                {
+                    "id": f"t_{uuid.uuid4().hex[:8]}",
+                    "symbol": sym,
+                    "side": side,
+                    "datetime": dates[min(i * (n // 5), n - 1)] + "T10:00:00Z",
+                    "price": price,
+                    "quantity": qty,
+                    "amount": amount,
+                    "commission": round(max(5.0, amount * 0.0003), 2),
+                    "reason": "mock signal",
+                    "pnl": round(rng.uniform(-amount * 0.1, amount * 0.15), 2)
+                    if side == "SELL"
+                    else None,
+                }
+            )
 
     duration_ms = max(1, int((time.perf_counter() - t_start) * 1000))
 

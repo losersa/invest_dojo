@@ -10,27 +10,24 @@
 
 Celery worker 由独立进程跑（Procfile `train-worker`）。
 """
+
 from __future__ import annotations
-
-import json
-from typing import Any
-
-from fastapi import APIRouter, Depends, Query
-
-from common import create_app, get_logger, get_supabase_client, settings
 
 # 任务导入（确保 Celery 注册；FastAPI 侧也需要）
 import tasks  # noqa: F401
 from common_utils import (
-    ErrorCode,
-    STATUS_PENDING,
     STATUS_CANCELLED,
+    STATUS_PENDING,
     TERMINAL_STATUSES,
+    ErrorCode,
     TrainJobCreate,
     api_error,
     new_job_id,
     utc_now_iso,
 )
+from fastapi import APIRouter, Query
+
+from common import create_app, get_logger, get_supabase_client, settings
 
 logger = get_logger("train-svc")
 
@@ -80,15 +77,18 @@ async def create_training_job(payload: TrainJobCreate):
     config_dict = payload.config.model_dump()
 
     client = get_supabase_client()
-    client.insert("training_jobs", {
-        "job_id": job_id,
-        "model_id": model_id,
-        "user_id": None,  # TODO: 从 JWT 获取（Epic 7）
-        "status": STATUS_PENDING,
-        "progress": 0,
-        "stage": "queued",
-        "config": config_dict,
-    })
+    client.insert(
+        "training_jobs",
+        {
+            "job_id": job_id,
+            "model_id": model_id,
+            "user_id": None,  # TODO: 从 JWT 获取（Epic 7）
+            "status": STATUS_PENDING,
+            "progress": 0,
+            "stage": "queued",
+            "config": config_dict,
+        },
+    )
 
     # 推 Celery：根据 algorithm 选择任务
     algorithm = config_dict.get("algorithm", "dummy")
@@ -202,12 +202,14 @@ async def cancel_training_job(job_id: str):
         )
 
     # 只更新状态；真正终止见 Epic 6
-    import httpx
     url = f"{client.url}/rest/v1/training_jobs?job_id=eq.{job_id}"
-    resp = client._http.patch(url, json={
-        "status": STATUS_CANCELLED,
-        "completed_at": utc_now_iso(),
-    })
+    resp = client._http.patch(
+        url,
+        json={
+            "status": STATUS_CANCELLED,
+            "completed_at": utc_now_iso(),
+        },
+    )
     resp.raise_for_status()
     return {"data": {"job_id": job_id, "status": STATUS_CANCELLED}}
 

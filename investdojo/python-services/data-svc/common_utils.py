@@ -4,9 +4,10 @@
 - 分页响应模板
 - 错误响应
 """
+
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException, Query
@@ -73,7 +74,7 @@ def parse_as_of(as_of: str | None) -> str | None:
         elif not (s.endswith("Z") or "+" in s[-6:] or "-" in s[10:]):
             s += "+00:00"
         dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
-        return dt.astimezone(timezone.utc).isoformat()
+        return dt.astimezone(UTC).isoformat()
     except Exception as exc:
         raise api_error(
             ErrorCode.INVALID_PARAM,
@@ -95,7 +96,7 @@ def parse_date(value: str | None, *, name: str = "date") -> str | None:
         if not (s.endswith("Z") or "+" in s[-6:] or "-" in s[10:]):
             s += "+00:00"
         dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
-        return dt.astimezone(timezone.utc).isoformat()
+        return dt.astimezone(UTC).isoformat()
     except Exception as exc:
         raise api_error(
             ErrorCode.INVALID_PARAM,
@@ -140,6 +141,7 @@ def as_of_to_utc_iso(as_of: str | None) -> str | None:
         return as_of  # 已经是完整 ISO
     # 纯日期 "2024-03-15" 视为 北京时间该日 00:00:00
     from datetime import timedelta
+
     d = datetime.strptime(as_of, "%Y-%m-%d")
     beijing = d.replace(tzinfo=timezone(timedelta(hours=8)))
-    return beijing.astimezone(timezone.utc).isoformat()
+    return beijing.astimezone(UTC).isoformat()

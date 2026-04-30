@@ -1,11 +1,12 @@
 """场景接口"""
+
 from __future__ import annotations
 
+from common_utils import ErrorCode, api_error
 from fastapi import APIRouter, Query
 
 from common import get_logger
 from common.supabase_client import get_supabase_client
-from common_utils import ErrorCode, api_error
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -14,9 +15,7 @@ router = APIRouter()
 @router.get("/scenarios", summary="场景列表")
 async def list_scenarios(
     category: str | None = Query(None, description="场景类别"),
-    difficulty: str | None = Query(
-        None, pattern="^(easy|medium|hard)$"
-    ),
+    difficulty: str | None = Query(None, pattern="^(easy|medium|hard)$"),
 ):
     filters: dict[str, str] = {}
     if category:

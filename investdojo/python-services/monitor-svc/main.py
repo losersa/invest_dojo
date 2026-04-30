@@ -9,22 +9,21 @@
 - GET /api/v1/monitor/ping · 自身快速探活
 - GET /metrics · Prometheus（common 自动挂）
 """
+
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
-
-from fastapi import APIRouter
-
-from common import create_app, get_logger, settings
+from datetime import UTC, datetime
 
 from common_utils import (
     collect_stats,
     probe_all_services,
     probe_infra,
     summarize_status,
-    get_registered_services,
 )
+from fastapi import APIRouter
+
+from common import create_app, get_logger, settings
 
 logger = get_logger("monitor-svc")
 
@@ -62,7 +61,7 @@ async def ping() -> dict:
     return {
         "ok": True,
         "service": "monitor-svc",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
@@ -92,7 +91,7 @@ async def stats():
         "meta": {
             "source": "supabase.postgrest.count_exact",
             "elapsed_ms": elapsed,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         },
     }
 
@@ -102,13 +101,12 @@ async def overview():
     """并发取 infra + services + stats，一次性返回所有重要指标"""
     t = time.perf_counter()
     import asyncio
+
     infra_task = asyncio.create_task(probe_infra())
     services_task = asyncio.create_task(probe_all_services())
     stats_task = asyncio.create_task(collect_stats())
 
-    infra, services_list, stats_data = await asyncio.gather(
-        infra_task, services_task, stats_task
-    )
+    infra, services_list, stats_data = await asyncio.gather(infra_task, services_task, stats_task)
     elapsed = int((time.perf_counter() - t) * 1000)
 
     summary = summarize_status(infra, services_list)
@@ -122,7 +120,7 @@ async def overview():
         },
         "meta": {
             "elapsed_ms": elapsed,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "monitor_svc_port": settings.monitor_svc_port,
         },
     }

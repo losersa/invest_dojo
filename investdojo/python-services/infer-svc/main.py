@@ -2,20 +2,18 @@
 
 启动：uvicorn main:app --app-dir infer-svc --port 8003
 """
+
 from __future__ import annotations
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-
-from common import create_app, get_logger, settings
-
 from common_utils import (
-    ErrorCode,
     InferenceRequest,
     Signal,
-    api_error,
     parse_and_validate_as_of,
 )
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from mock_model import KNOWN_MOCK_MODELS, predict_one
+
+from common import create_app, get_logger, settings
 
 logger = get_logger("infer-svc")
 
@@ -51,9 +49,7 @@ router = APIRouter(prefix="/api/v1/inference", tags=["inference"])
 
 @router.get("/models", summary="列出可用的 mock 模型")
 async def list_mock_models():
-    data = [
-        {"model_id": k, **v} for k, v in KNOWN_MOCK_MODELS.items()
-    ]
+    data = [{"model_id": k, **v} for k, v in KNOWN_MOCK_MODELS.items()]
     return {"data": data, "meta": {"source": "mock", "count": len(data)}}
 
 
@@ -113,24 +109,28 @@ async def ws_stream(websocket: WebSocket):
     Epic 6 会接入：订阅联动会话 `session_tick` → 每 tick 触发推理 → 推送 Signal。
     """
     await websocket.accept()
-    await websocket.send_json({
-        "type": "info",
-        "code": "skeleton_only",
-        "message": (
-            "WebSocket stream is a skeleton (T-2.03). "
-            "Real streaming inference will be implemented in Epic 6 (T-6.03). "
-            "Use POST /api/v1/inference/predict for now."
-        ),
-    })
+    await websocket.send_json(
+        {
+            "type": "info",
+            "code": "skeleton_only",
+            "message": (
+                "WebSocket stream is a skeleton (T-2.03). "
+                "Real streaming inference will be implemented in Epic 6 (T-6.03). "
+                "Use POST /api/v1/inference/predict for now."
+            ),
+        }
+    )
     try:
         # 消费客户端消息但不做实际工作
         while True:
             msg = await websocket.receive_text()
-            await websocket.send_json({
-                "type": "echo",
-                "received": msg[:200],
-                "note": "skeleton",
-            })
+            await websocket.send_json(
+                {
+                    "type": "echo",
+                    "received": msg[:200],
+                    "note": "skeleton",
+                }
+            )
     except WebSocketDisconnect:
         logger.info("infer.ws.disconnected")
 

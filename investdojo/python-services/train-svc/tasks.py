@@ -15,18 +15,20 @@ Epic 3（T-3.02）：加 LightGBM baseline / XGBoost baseline
 注意：Celery 的 result backend 只存任务结果，**真正的业务状态持久化必须写 DB**。
 Celery 任务崩溃重试时可能状态丢失，以 DB 为准。
 """
+
 from __future__ import annotations
 
 import time
 from typing import Any
 
-from common import celery_app, get_logger, get_supabase_client
 from common_utils import (
     STATUS_COMPLETED,
     STATUS_FAILED,
     STATUS_RUNNING,
     utc_now_iso,
 )
+
+from common import celery_app, get_logger, get_supabase_client
 
 logger = get_logger(__name__)
 
@@ -60,6 +62,7 @@ def _update_job_status(
         patch["completed_at"] = utc_now_iso()
 
     import httpx
+
     url = f"{client.url}/rest/v1/training_jobs?job_id=eq.{job_id}"
     resp = client._http.patch(url, json=patch)
     try:

@@ -6,11 +6,12 @@
 3. Signal 格式契约
 4. InferenceRequest 校验（symbols 去重 / 上限 50）
 """
+
 from __future__ import annotations
 
 import importlib.util
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -69,7 +70,7 @@ def test_as_of_date_only():
 
 
 def test_as_of_future_rejected():
-    future = (datetime.now(timezone.utc) + timedelta(days=365)).isoformat()
+    future = (datetime.now(UTC) + timedelta(days=365)).isoformat()
     with pytest.raises(HTTPException) as ei:
         parse_and_validate_as_of(future)
     assert ei.value.status_code == 403
@@ -78,7 +79,7 @@ def test_as_of_future_rejected():
 
 def test_as_of_within_60s_skew_allowed():
     """允许 60 秒 clock skew（联动时钟可能稍领先）"""
-    near_future = (datetime.now(timezone.utc) + timedelta(seconds=30)).isoformat()
+    near_future = (datetime.now(UTC) + timedelta(seconds=30)).isoformat()
     # 不应抛异常
     parse_and_validate_as_of(near_future)
 
@@ -131,17 +132,32 @@ def test_predict_one_deterministic():
 
 def test_predict_one_different_symbol_different_seed():
     """不同 symbol 应拿到不同 seed"""
-    r1 = predict_one("mock_momentum_v1", "600519", "2024-03-15T15:00:00Z",
-                     include_explanation=False, feature_override=None)
-    r2 = predict_one("mock_momentum_v1", "000001", "2024-03-15T15:00:00Z",
-                     include_explanation=False, feature_override=None)
+    r1 = predict_one(
+        "mock_momentum_v1",
+        "600519",
+        "2024-03-15T15:00:00Z",
+        include_explanation=False,
+        feature_override=None,
+    )
+    r2 = predict_one(
+        "mock_momentum_v1",
+        "000001",
+        "2024-03-15T15:00:00Z",
+        include_explanation=False,
+        feature_override=None,
+    )
     assert r1["metadata"]["seed"] != r2["metadata"]["seed"]
 
 
 def test_predict_one_signal_validates():
     """输出能喂给 Signal pydantic 并通过校验"""
-    r = predict_one("mock_momentum_v1", "600519", "2024-03-15T15:00:00Z",
-                    include_explanation=True, feature_override=None)
+    r = predict_one(
+        "mock_momentum_v1",
+        "600519",
+        "2024-03-15T15:00:00Z",
+        include_explanation=True,
+        feature_override=None,
+    )
     sig = Signal(**r)
     assert sig.action in {"BUY", "SELL", "HOLD"}
     assert 0 <= sig.confidence <= 1
@@ -153,16 +169,26 @@ def test_predict_one_signal_validates():
 def test_predict_one_feature_override():
     """override 应覆盖 mock 生成值"""
     override = {"rsi_14": 20.0, "ma_cross_5_20": 1.0}
-    r = predict_one("mock_momentum_v1", "600519", "2024-03-15T15:00:00Z",
-                    include_explanation=False, feature_override=override)
+    r = predict_one(
+        "mock_momentum_v1",
+        "600519",
+        "2024-03-15T15:00:00Z",
+        include_explanation=False,
+        feature_override=override,
+    )
     assert r["features"]["rsi_14"] == 20.0
     assert r["features"]["ma_cross_5_20"] == 1.0
 
 
 def test_predict_one_unknown_model_fallback():
     """未登记模型也能跑，不会抛异常"""
-    r = predict_one("some_unknown_model", "600519", "2024-03-15T15:00:00Z",
-                    include_explanation=False, feature_override=None)
+    r = predict_one(
+        "some_unknown_model",
+        "600519",
+        "2024-03-15T15:00:00Z",
+        include_explanation=False,
+        feature_override=None,
+    )
     assert r["action"] in {"BUY", "SELL", "HOLD"}
     assert r["metadata"]["model_id"] == "some_unknown_model"
 
@@ -209,6 +235,6 @@ def test_signal_action_enum():
 # ──────────────────────────────────────────
 def test_known_mock_models_nonempty():
     assert len(KNOWN_MOCK_MODELS) >= 3
-    for k, v in KNOWN_MOCK_MODELS.items():
+    for _, v in KNOWN_MOCK_MODELS.items():
         assert "version" in v
         assert "description" in v

@@ -4,22 +4,23 @@
 - 财报的"时间"要按 `announce_date`（公告日）而不是 `report_date`（报告期）。
   因为 2024 Q1 的财报 2024-04-29 才公告，2024-03-31 那天绝对不能看到。
 """
+
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
-
-from common import get_logger
-from common.supabase_client import get_supabase_client
 from common_utils import (
     ErrorCode,
     api_error,
     as_of_to_utc_iso,
-    pagination_params,
     paginate_response,
+    pagination_params,
     parse_as_of,
     parse_date,
     split_symbols,
 )
+from fastapi import APIRouter, Depends, Query
+
+from common import get_logger
+from common.supabase_client import get_supabase_client
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -31,9 +32,7 @@ VALID_STATEMENTS = {"profit", "balance", "cashflow", "growth", "operation"}
 @router.get("/fundamentals", summary="查询财报")
 async def list_fundamentals(
     symbols: str = Query(..., description="逗号分隔代码（最多 50）"),
-    statement: str | None = Query(
-        None, description=f"报表类型，可选: {sorted(VALID_STATEMENTS)}"
-    ),
+    statement: str | None = Query(None, description=f"报表类型，可选: {sorted(VALID_STATEMENTS)}"),
     start: str | None = Query(None, description="announce_date >="),
     end: str | None = Query(None, description="announce_date <="),
     as_of: str | None = Query(

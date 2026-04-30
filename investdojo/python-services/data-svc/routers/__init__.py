@@ -1,4 +1,5 @@
 """data-svc 路由聚合"""
+
 from .fundamentals import router as fundamentals_router
 from .klines import router as klines_router
 from .market_snapshots import router as market_snapshots_router

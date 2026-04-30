@@ -2,13 +2,10 @@
 
 启动：uvicorn main:app --app-dir backtest-svc --port 8004
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
-from fastapi import APIRouter, Depends, Query
-
-from common import create_app, get_logger, get_supabase_client, settings
+from datetime import UTC, datetime
 
 from common_utils import (
     BacktestConfig,
@@ -17,7 +14,10 @@ from common_utils import (
     StrategySpec,
     api_error,
 )
+from fastapi import APIRouter, Query
 from mock_engine import new_backtest_id, run_mock_backtest
+
+from common import create_app, get_logger, get_supabase_client, settings
 
 logger = get_logger("backtest-svc")
 
@@ -117,27 +117,30 @@ async def run_fast(config: BacktestConfig):
     result = run_mock_backtest(config_dict)
 
     bt_id = new_backtest_id()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     # 写库（落到 backtests 表）
     # 注意：model_id 有 FK 到 models 表，MVP 阶段 mock 模型未入库，
     # 所以 model_id 统一存 null；真实策略的 model_id 已保存在 config.strategy.model_id
     client = get_supabase_client()
     try:
-        client.insert("backtests", {
-            "id": bt_id,
-            "model_id": None,  # Epic 3 真模型入库后从 config.strategy.model_id 读取并校验
-            "user_id": None,   # Epic 7 接入 Auth 后补
-            "mode": config.mode,
-            "status": "completed",
-            "config": config_dict,
-            "summary": result["summary"],
-            "equity_curve": result["equity_curve"],
-            "segment_performance": result.get("segment_performance"),
-            "feature_importance": result.get("feature_importance"),
-            "duration_ms": result["duration_ms"],
-            "completed_at": now,
-        })
+        client.insert(
+            "backtests",
+            {
+                "id": bt_id,
+                "model_id": None,  # Epic 3 真模型入库后从 config.strategy.model_id 读取并校验
+                "user_id": None,  # Epic 7 接入 Auth 后补
+                "mode": config.mode,
+                "status": "completed",
+                "config": config_dict,
+                "summary": result["summary"],
+                "equity_curve": result["equity_curve"],
+                "segment_performance": result.get("segment_performance"),
+                "feature_importance": result.get("feature_importance"),
+                "duration_ms": result["duration_ms"],
+                "completed_at": now,
+            },
+        )
     except Exception as e:
         logger.warning("backtest.insert_failed", id=bt_id, error=str(e))
 
