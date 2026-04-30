@@ -12,6 +12,9 @@ out
 .env
 .env.local
 .env.*.local
+# 中心化凭证（位于 ~/.investdojo.env，默认在工作区外；这里加一道双保险）
+.investdojo.env
+investdojo.env
 
 # platform builds
 src-tauri/target

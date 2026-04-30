@@ -43,7 +43,7 @@ async def get_async_redis() -> aioredis.Redis:
 def redis_health_check() -> bool:
     """Redis 健康检查"""
     try:
-        return get_redis().ping()
+        return bool(get_redis().ping())
     except Exception as e:
         logger.warning("redis.health_check.failed", error=str(e))
         return False
@@ -53,7 +53,7 @@ async def async_redis_health_check() -> bool:
     """异步 Redis 健康检查"""
     try:
         client = await get_async_redis()
-        return await client.ping()
+        return bool(await client.ping())
     except Exception as e:
         logger.warning("redis.async.health_check.failed", error=str(e))
         return False
