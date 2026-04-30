@@ -1,0 +1,37 @@
+# pre-commit 钩子配置
+# 安装：pre-commit install
+# 手动跑：pre-commit run --all-files
+#
+# 通用基础检查 + Python 的 ruff，避免提交明显错误
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: mixed-line-ending
+
+  # Python · Ruff（lint + format）
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^investdojo/python-services/.*\.py$
+      - id: ruff-format
+        files: ^investdojo/python-services/.*\.py$
+
+  # 本地钩子：验证关键文件格式
+  - repo: local
+    hooks:
+      - id: check-no-secrets
+        name: 检查是否意外提交密钥
+        entry: bash -c 'if git diff --cached | grep -E "(eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9|sk_live_|sk_test_)" > /dev/null; then echo "❌ 检测到可能的密钥/token，请检查"; exit 1; fi'
+        language: system
+        pass_filenames: false

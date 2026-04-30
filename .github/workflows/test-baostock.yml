@@ -1,7 +1,19 @@
 name: Test BaoStock Connectivity
 
+# ⚠️ 2026-04-29 验证结果：不可用
+# ──────────────────────────────────────────────────────────
+# GitHub Actions 的 runner 在美国（Illinois Azure），
+# BaoStock 服务器在上海（114.94.20.92），国际链路被墙：
+#   - ping www.baostock.com → 0 回包
+#   - bs.login() → TCP 连接 9999 端口永久挂起
+#
+# 结论：Supabase 数据自动更新改用本地 launchd 方案。
+# 这个 workflow 作为"已验证的失败方案"保留存档，
+# 避免后人再踩同样的坑。
+# ──────────────────────────────────────────────────────────
+#
 # 只能手动触发的测试 workflow
-# 用途：验证 GitHub Actions 的 runner 能否访问 BaoStock 服务器
+
 on:
   workflow_dispatch:
 

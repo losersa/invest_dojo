@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InvestDojo 投资道场 — 招商演示 · Swiss Modern</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Nunito:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@900&display=swap">
+<style>
+/* ===========================================
+   BOLD SIGNAL THEME — Confident, Bold, High-Impact
+   =========================================== */
+:root {
+  --bg-primary: #1a1a1a;
+  --bg-gradient: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 50%, #1a1a1a 100%);
+  --bg-light: #f0efe9;
+  --card-accent: #FF5722;
+  --card-accent-dim: rgba(255, 87, 34, 0.12);
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255,255,255,0.55);
+  --text-dark: #1a1a1a;
+  --text-dark-dim: rgba(26,26,26,0.55);
+  --accent-blue: #2979FF;
+  --accent-blue-dim: rgba(41,121,255,0.12);
+  --stock-up: #ea3943;
+  --stock-down: #16c784;
+  --stock-up-dim: rgba(234,57,67,0.12);
+  --stock-down-dim: rgba(22,199,132,0.12);
+  --purple: #bf5af2;
+  --purple-dim: rgba(191,90,242,0.12);
+  --orange: #ff9f0a;
+  --orange-dim: rgba(255,159,10,0.12);
+
+  --font-display: 'Archivo', 'Space Grotesk', sans-serif;
+  --font-body: 'Space Grotesk', sans-serif;
+
+  --title-size: clamp(2rem, 6vw, 4.5rem);
+  --h2-size: clamp(1.5rem, 4.5vw, 3.2rem);
+  --h3-size: clamp(1rem, 2.5vw, 1.5rem);
+  --body-size: clamp(0.8rem, 1.4vw, 1.05rem);
+  --small-size: clamp(0.7rem, 1vw, 0.85rem);
+  --micro-size: clamp(0.6rem, 0.8vw, 0.75rem);
+
+  --slide-padding: clamp(1.5rem, 4vw, 4rem);
+  --content-gap: clamp(0.8rem, 2vw, 1.5rem);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; overflow-x: hidden; background: var(--bg-primary); }
+html { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+body { font-family: var(--font-body); -webkit-font-smoothing: antialiased; color: var(--text-primary); }
+
+/* ===== Slide Base ===== */
+.slide {
+  width: 100vw; height: 100vh; height: 100dvh;
+  overflow: hidden; scroll-snap-align: start;
+  display: flex; flex-direction: column;
+  position: relative;
+  padding: var(--slide-padding);
+}
+.slide--dark { background: var(--bg-gradient); color: var(--text-primary); }
+.slide--light { background: var(--bg-light); color: var(--text-dark); }
+
+.slide-content {
+  flex: 1; display: flex; flex-direction: column;
+  justify-content: center; align-items: center;
+  max-height: 100%; overflow: hidden;
+  gap: var(--content-gap);
+}
+
+/* ===== Bold Signal Signature: Section Number ===== */
+.section-num {
+  font-family: var(--font-display);
+  font-size: clamp(0.9rem, 1.5vw, 1.2rem);
+  font-weight: 900;
+  color: var(--card-accent);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* ===== Typography ===== */
+.hero-title {
+  font-family: var(--font-display);
+  font-size: var(--title-size);
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: -1px;
+  text-align: center;
+  text-transform: uppercase;
+}
+.section-title {
+  font-family: var(--font-display);
+  font-size: var(--h2-size);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+  text-align: center;
+}
+.body-text { font-size: var(--body-size); line-height: 1.6; font-weight: 400; }
+.caption-text { font-size: var(--small-size); line-height: 1.5; }
+.micro-text { font-size: var(--micro-size); line-height: 1.4; }
+
+/* ===== Accent Card (Bold Signal Signature) ===== */
+.accent-card {
+  background: var(--card-accent);
+  color: var(--text-dark);
+  border-radius: 16px;
+  padding: clamp(1rem, 2.5vw, 2rem);
+}
+.accent-card .stat-val {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 900;
+  line-height: 1;
+}
+
+/* ===== Glass Card (dark) ===== */
+.card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  padding: clamp(1rem, 2vw, 1.8rem);
+  max-width: min(90vw, 1000px);
+}
+.card-light {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: clamp(1rem, 2vw, 1.8rem);
+  box-shadow: 0 2px 20px rgba(0,0,0,0.06);
+}
+
+/* ===== Grid ===== */
+.grid { display: grid; gap: clamp(0.6rem, 1.5vw, 1rem); width: 100%; max-width: min(90vw, 1060px); }
+.grid-2 { grid-template-columns: repeat(2, 1fr); }
+.grid-3 { grid-template-columns: repeat(3, 1fr); }
+.grid-4 { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 768px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+
+/* ===== Tags ===== */
+.tag {
+  display: inline-block;
+  font-size: var(--micro-size);
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 980px;
+  letter-spacing: 0.2px;
+}
+.tag-accent { background: var(--card-accent-dim); color: var(--card-accent); }
+.tag-blue { background: var(--accent-blue-dim); color: var(--accent-blue); }
+.tag-green { background: var(--stock-down-dim); color: var(--stock-down); }
+.tag-red { background: var(--stock-up-dim); color: var(--stock-up); }
+.tag-purple { background: var(--purple-dim); color: var(--purple); }
+.tag-orange { background: var(--orange-dim); color: var(--orange); }
+
+/* ===== Stat ===== */
+.stat-block { text-align: center; }
+.stat-value {
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 4.5vw, 3rem);
+  font-weight: 900;
+  line-height: 1;
+}
+.stat-label { font-size: var(--micro-size); color: var(--text-secondary); margin-top: 6px; }
+
+/* ===== Compare Table ===== */
+.compare-table {
+  width: 100%; max-width: min(90vw, 960px);
+  border-collapse: separate; border-spacing: 0;
+  font-size: var(--small-size);
+}
+.compare-table th {
+  text-align: left; padding: clamp(6px,1vh,12px) clamp(8px,1vw,16px);
+  font-weight: 700; font-size: var(--micro-size);
+  color: var(--text-secondary);
+  border-bottom: 2px solid var(--card-accent);
+}
+.compare-table td {
+  padding: clamp(6px,1vh,12px) clamp(8px,1vw,16px);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.compare-table .highlight-row td { background: rgba(255,87,34,0.06); }
+
+/* ===== Timeline ===== */
+.timeline { width: 100%; max-width: min(90vw, 900px); }
+.timeline-item { display: flex; gap: clamp(12px,2vw,24px); margin-bottom: clamp(12px,2vh,24px); position: relative; }
+.timeline-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; margin-top: 6px; }
+.timeline-line { position: absolute; left: 5px; top: 18px; bottom: -12px; width: 2px; background: rgba(255,255,255,0.08); }
+.timeline-item:last-child .timeline-line { display: none; }
+
+/* ===== Animations ===== */
+.reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo); }
+.slide.visible .reveal { opacity: 1; transform: translateY(0); }
+.slide.visible .reveal:nth-child(1) { transition-delay: 0.05s; }
+.slide.visible .reveal:nth-child(2) { transition-delay: 0.15s; }
+.slide.visible .reveal:nth-child(3) { transition-delay: 0.25s; }
+.slide.visible .reveal:nth-child(4) { transition-delay: 0.35s; }
+.slide.visible .reveal:nth-child(5) { transition-delay: 0.45s; }
+
+/* ===== Navigation ===== */
+.progress-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 1000; height: 4px; background: rgba(255,255,255,0.06); }
+.progress-fill { height: 100%; background: var(--card-accent); transition: width 0.4s var(--ease-out-expo); }
+.nav-dots { position: fixed; right: clamp(12px,2vw,24px); top: 50%; transform: translateY(-50%); z-index: 1000; display: flex; flex-direction: column; gap: 8px; }
+.nav-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.15); cursor: pointer; transition: all 0.3s; border: none; padding: 0; }
+.nav-dot.active { background: var(--card-accent); height: 24px; border-radius: 4px; }
+.slide-counter { position: fixed; bottom: clamp(12px,2vw,20px); right: clamp(12px,2vw,24px); z-index: 1000; font-size: var(--micro-size); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.key-hint { position: fixed; bottom: clamp(12px,2vw,20px); left: clamp(12px,2vw,24px); z-index: 1000; font-size: var(--micro-size); color: rgba(255,255,255,0.2); display: flex; align-items: center; gap: 6px; }
+.key-hint kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; font-family: var(--font-body); font-size: 10px; }
+
+/* ===== Inline Edit ===== */
+.edit-hotzone { position: fixed; top: 0; left: 0; width: 80px; height: 80px; z-index: 10000; cursor: pointer; }
+.edit-toggle { position: fixed; top: 12px; left: 12px; z-index: 10001; width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); backdrop-filter: blur(10px); color: rgba(255,255,255,0.6); font-size: 16px; cursor: pointer; opacity: 0; pointer-events: none; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; }
+.edit-toggle.show, .edit-toggle.active { opacity: 1; pointer-events: auto; }
+.edit-toggle.active { background: var(--card-accent); color: var(--text-dark); border-color: var(--card-accent); }
+.edit-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 9999; height: 32px; background: var(--card-accent); color: var(--text-dark); font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 12px; transform: translateY(-100%); transition: transform 0.3s ease; }
+.edit-banner.active { transform: translateY(0); }
+.edit-banner kbd { background: rgba(0,0,0,0.15); padding: 1px 6px; border-radius: 3px; font-size: 11px; }
+body.edit-active [contenteditable] { outline: 2px dashed rgba(255,87,34,0.4); outline-offset: 2px; border-radius: 4px; cursor: text; }
+body.edit-active [contenteditable]:focus { outline-color: var(--card-accent); background: rgba(255,87,34,0.04); }
+
+/* ===== Pill CTA ===== */
+.pill-cta {
+  display: inline-flex; align-items: center;
+  padding: 10px 24px; border-radius: 980px;
+  border: 2px solid var(--card-accent);
+  color: var(--card-accent); background: transparent;
+  font-family: var(--font-body); font-size: var(--body-size); font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+  text-decoration: none;
+}
+.pill-cta:hover { background: var(--card-accent); color: var(--text-dark); }
+
+/* ===== Responsive ===== */
+@media (max-height: 700px) {
+  :root { --slide-padding: clamp(0.75rem, 3vw, 2rem); --content-gap: clamp(0.4rem, 1.5vw, 1rem); --title-size: clamp(1.5rem, 5vw, 3rem); }
+}
+@media (max-height: 600px) {
+  .nav-dots, .key-hint { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.2s !important; }
+  html { scroll-behavior: auto; }
+}
+</style>
+
+/* ===========================================
+   SWISS MODERN OVERRIDES
+   =========================================== */
+<style>
+:root {
+  --bg-primary: #ffffff !important;
+  --bg-gradient: none !important;
+  --bg-light: #fafaf8 !important;
+  --card-accent: #ff3300 !important;
+  --card-accent-dim: rgba(255,51,0,0.08) !important;
+  --font-display: 'Archivo', sans-serif !important;
+  --font-body: 'Nunito', sans-serif !important;
+}
+/* Swiss grid background on light slides */
+.slide--light::before {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(0,0,0,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,0,0,0.025) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+}
+/* Square corners for Swiss */
+.card, .card-light, .accent-card, .tag, .pill-cta, .nav-dot, .edit-toggle {
+  border-radius: 0 !important;
+}
+.pill-cta {
+  border-width: 3px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1px !important;
+  font-weight: 800 !important;
+}
+.tag { font-weight: 700 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
+.section-num { letter-spacing: 3px !important; }
+.hero-title { letter-spacing: -2px !important; text-transform: uppercase !important; }
+.section-title { letter-spacing: -1px !important; }
+/* Red progress bar */
+.progress-fill { background: #ff3300 !important; }
+.nav-dot.active { background: #ff3300 !important; border-radius: 0 !important; }
+/* Edit controls */
+.edit-toggle { border-radius: 0 !important; }
+.edit-toggle.active { background: #ff3300 !important; border-color: #ff3300 !important; }
+.edit-banner { background: #ff3300 !important; text-transform: uppercase !important; letter-spacing: 1px !important; }
+body.edit-active [contenteditable] { outline: 2px dashed #ff3300 !important; }
+</style>
+
+</head>
+<body>
+
+<!-- Progress Bar -->
+<div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+
+<!-- Nav Dots -->
+<nav class="nav-dots" id="navDots"></nav>
+
+<!-- Slide Counter -->
+<div class="slide-counter" id="slideCounter"></div>
+
+<!-- Key Hint -->
+<div class="key-hint"><kbd>←</kbd><kbd>→</kbd> 翻页 · <kbd>Space</kbd> 下一页 · <kbd>E</kbd> 编辑</div>
+
+<!-- Edit Controls -->
+<div class="edit-hotzone" id="editHotzone"></div>
+<button class="edit-toggle" id="editToggle">✏️</button>
+<div class="edit-banner" id="editBanner">📝 编辑模式 — 点击任意文字修改 · <kbd>Ctrl+S</kbd> 保存导出 · <kbd>E</kbd> 退出</div>
+
+<!-- ===== SLIDES ===== -->
+
+<!-- SLIDE 0: Cover -->
+<section class="slide slide--dark">
+  <div class="slide-content">
+    <div class="section-num reveal">Investment Training Platform</div>
+    <h1 class="hero-title reveal" style="max-width: min(90vw, 800px);">
+      投资道场<br><span style="color: var(--card-accent);">InvestDojo</span>
+    </h1>
+    <p class="body-text reveal" style="color: var(--text-secondary); text-align: center; max-width: min(90vw, 560px);">
+      投资界的飞行模拟器 — 模拟炒股 × 量化回测 × 财报分析 三合一
+    </p>
+    <div class="reveal" style="margin-top: clamp(12px,2vw,24px);">
+      <button class="pill-cta" onclick="goToSlide(1)">开始了解 ›</button>
+    </div>
+    <p class="micro-text reveal" style="color: rgba(255,255,255,0.15); margin-top: clamp(24px,4vw,48px);">Confidential · 2026</p>
+  </div>
+</section>
+
+<!-- SLIDE 1: Pain Point -->
+<section class="slide slide--dark">
+  <div class="slide-content">
+    <div class="section-num reveal">01 · 市场机遇</div>
+    <h2 class="section-title reveal" style="max-width: min(90vw, 760px);">
+      2亿股民入市<br><span style="color: var(--text-secondary);">却没有一个好用的</span><br>投资训练工具
+    </h2>
+    <div class="grid grid-3 reveal" style="margin-top: var(--content-gap);">
+      <div class="accent-card" style="text-align: center;">
+        <div class="stat-val">73%</div>
+        <div style="font-size: var(--small-size); font-weight: 600; margin-top: 6px;">散户第一年亏损比例</div>
+      </div>
+      <div class="card" style="text-align: center;">
+        <div class="stat-value" style="color: var(--accent-blue);">2.2亿</div>
+        <div class="stat-label">中国 A 股投资者数量</div>
+      </div>
+      <div class="card" style="text-align: center;">
+        <div class="stat-value" style="color: var(--orange);">0</div>
+        <div class="stat-label">历史沉浸式训练产品</div>
+      </div>
+    </div>
+    <p class="body-text reveal" style="color: var(--text-secondary); text-align: center; max-width: min(90vw, 640px);">
+      飞行员上飞机前练习数百小时模拟器，投资者入市前为什么不能？
+    </p>
+  </div>
+</section>
+
+<!-- SLIDE 2: Product Positioning -->
+<section class="slide slide--light">
+  <div class="slide-content">
+    <div class="section-num reveal" style="color: var(--card-accent);">02 · 产品定位</div>
+    <h2 class="section-title reveal" style="max-width: min(90vw, 800px); color: var(--text-dark);">
+      用真实历史数据<br><span style="color: var(--card-accent);">训练投资直觉</span>
+    </h2>
+    <p class="body-text reveal" style="color: var(--text-dark-dim); text-align: center; max-width: min(90vw, 600px);">
+      回到关键历史时刻 — 只看当时的新闻、K 线、政策 — 做出你的投资决策 — AI 实时复盘
+    </p>
+    <div class="grid grid-3 reveal" style="margin-top: var(--content-gap);">
+      <div class="card-light" style="text-align: center;">
+        <div style="font-size: clamp(1.5rem,3vw,2rem); margin-bottom: 8px;">🎮</div>
+        <div style="font-family: var(--font-display); font-size: var(--h3-size); font-weight: 800; color: var(--text-dark);">历史情景模拟</div>
+        <p class="caption-text" style="color: var(--text-dark-dim); margin-top: 6px;">核心引流模块 · 游戏化投资训练</p>
+        <span class="tag tag-green" style="margin-top: 10px;">已上线 MVP</span>
+      </div>
+      <div class="card-light" style="text-align: center;">
+        <div style="font-size: clamp(1.5rem,3vw,2rem); margin-bottom: 8px;">📊</div>
+        <div style="font-family: var(--font-display); font-size: var(--h3-size); font-weight: 800; color: var(--text-dark);">AI 量化回测</div>
+        <p class="caption-text" style="color: var(--text-dark-dim); margin-top: 6px;">核心付费模块 · 自然语言写策略</p>
+        <span class="tag tag-blue" style="margin-top: 10px;">即将推出</span>
+      </div>
+      <div class="card-light" style="text-align: center;">
+        <div style="font-size: clamp(1.5rem,3vw,2rem); margin-bottom: 8px;">📋</div>
+        <div style="font-family: var(--font-display); font-size: var(--h3-size); font-weight: 800; color: var(--text-dark);">AI 财报分析</div>
+        <p class="caption-text" style="color: var(--text-dark-dim); margin-top: 6px;">高端付费模块 · 200 页→1 页精华</p>
+        <span class="tag tag-purple" style="margin-top: 10px;">规划中</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 3: Module A Deep Dive -->
+<section class="slide slide--dark">
+  <div class="slide-content">
+    <div class="section-num reveal">03 · 核心引流模块</div>
+    <h2 class="section-title reveal" style="max-width: min(90vw, 780px);">
+      如果你在 2020 年 3 月<br><span style="color: var(--card-accent);">有 100 万，你会怎么操作？</span>
+    </h2>
+    <p class="body-text reveal" style="color: var(--text-secondary); text-align: center; max-width: min(90vw, 640px);">
+      带着当时的新闻和恐慌情绪做决策 — 事后才揭晓答案
+    </p>
+    <div class="grid grid-2 reveal" style="margin-top: var(--content-gap); max-width: min(90vw, 900px);">
+      <div class="card" style="display: flex; flex-direction: column; gap: clamp(8px,1.5vh,14px);">
+        <div style="font-size: var(--body-size); font-weight: 700; color: var(--card-accent);">核心玩法</div>
+        <div style="display: flex; flex-direction: column; gap: clamp(4px,1vh,8px);">
+          <div style="display: flex; gap: 8px;"><span style="color: var(--card-accent); font-weight: 800;">①</span><span class="caption-text" style="color: rgba(255,255,255,0.7);">选择历史场景（新冠暴跌、2015 牛市、贸易战…）</span></div>
+          <div style="display: flex; gap: 8px;"><span style="color: var(--card-accent); font-weight: 800;">②</span><span class="caption-text" style="color: rgba(255,255,255,0.7);">逐日推进 — K 线 + 新闻 + 政策实时对齐</span></div>
+          <div style="display: flex; gap: 8px;"><span style="color: var(--card-accent); font-weight: 800;">③</span><span class="caption-text" style="color: rgba(255,255,255,0.7);">做出交易决策（买入/卖出/持有）</span></div>
+          <div style="display: flex; gap: 8px;"><span style="color: var(--card-accent); font-weight: 800;">④</span><span class="caption-text" style="color: rgba(255,255,255,0.7);">AI 实时复盘 — 每笔交易即时点评</span></div>
+          <div style="display: flex; gap: 8px;"><span style="color: var(--card-accent); font-weight: 800;">⑤</span><span class="caption-text" style="color: rgba(255,255,255,0.7);">生成完整复盘报告 + 决策评分</span></div>
+        </div>
+      </div>
+      <div class="card" style="display: flex; flex-direction: column; gap: clamp(6px,1vh,12px);">
+        <div style="font-size: var(--body-size); font-weight: 700; color: var(--card-accent);">已上线场景</div>
+        <div style="display: flex; flex-direction: column; gap: clamp(4px,0.8vh,8px);">
+          <div style="display: flex; justify-content: space-between; align-items: center;"><span class="caption-text" style="color: rgba(255,255,255,0.7);">🦢 2020 新冠疫情</span><span class="tag tag-orange">中等</span></div>
+          <div style="display: flex; justify-content: space-between; align-items: center;"><span class="caption-text" style="color: rgba(255,255,255,0.7);">🐂 2014-2015 疯牛行情</span><span class="tag tag-red">困难</span></div>
+          <div style="display: flex; justify-content: space-between; align-items: center;"><span class="caption-text" style="color: rgba(255,255,255,0.7);">📜 2018 中美贸易摩擦</span><span class="tag tag-orange">中等</span></div>
+          <div style="display: flex; justify-content: space-between; align-items: center;"><span class="caption-text" style="color: rgba(255,255,255,0.7);">🔄 2020 新能源起飞</span><span class="tag tag-green">简单</span></div>
+        </div>
+        <div style="margin-top: auto; padding-top: clamp(6px,1vh,12px); border-top: 1px solid rgba(255,255,255,0.06);">
+          <div class="micro-text" style="color: rgba(255,255,255,0.35);">真实前复权 A 股数据 · 2,996 条 K 线 · 49 条新闻</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 4: Module B & C -->
+<section class="slide slide--dark">
+  <div class="slide-content">
+    <div class="section-num reveal">04 · 付费增长引擎</div>
+    <h2 class="section-title reveal" style="max-width: min(90vw, 780px);">
+      AI 让投资分析<br><span style="color: var(--card-accent);">不再需要写代码</span>
+    </h2>
+    <div class="grid grid-2 reveal" style="margin-top: var(--content-gap); max-width: min(90vw, 960px);">
+      <div class="card" style="border-color: rgba(41,121,255,0.2);">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: clamp(8px,1.5vh,14px);">
+          <span style="font-size: clamp(1.2rem,2vw,1.5rem);">📊</span>
+          <div>
+            <div style="font-family: var(--font-display); font-size: var(--h3-size); font-weight: 800;">AI 量化回测</div>
+            <span class="tag tag-blue" style="margin-top: 3px;">核心付费 · ¥49-99/月</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: clamp(4px,0.8vh,8px); font-size: var(--small-size); color: rgba(255,255,255,0.65);">
+          <div>→ 用自然语言描述策略：<span style="color: var(--accent-blue);">"RSI&lt;30 且放量时买入"</span></div>
+          <div>→ AI 自动生成 Python 回测代码</div>
+          <div>→ 可视化报告：收益曲线、夏普比率、最大回撤</div>
+          <div>→ AI 深度解读策略优劣与改进方向</div>
+          <div>→ 20+ 预制策略模板，零代码上手</div>
+        </div>
+      </div>
+      <div class="card" style="border-color: rgba(191,90,242,0.2);">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: clamp(8px,1.5vh,14px);">
+          <span style="font-size: clamp(1.2rem,2vw,1.5rem);">📋</span>
+          <div>
+            <div style="font-family: var(--font-display); font-size: var(--h3-size); font-weight: 800;">AI 财报分析</div>
+            <span class="tag tag-purple" style="margin-top: 3px;">高端付费 · ¥199-499/月</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: clamp(4px,0.8vh,8px); font-size: var(--small-size); color: rgba(255,255,255,0.65);">
+          <div>→ 输入股票代码，秒出<span style="color: var(--purple);">六维分析报告</span></div>
+          <div>→ 盈利能力 · 成长性 · 运营效率 · 风险 · 估值 · 现金流</div>
+          <div>→ 自动匹配同行企业 PK 对比</div>
+          <div>→ 5 年历史趋势追踪</div>
+          <div>→ 所有数据来自 API，LLM 只做解读</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 5: Competitive -->
+<section class="slide slide--dark">
+  <div class="slide-content">
+    <div class="section-num reveal">05 · 竞争格局</div>
+    <h2 class="section-title reveal" style="max-width: min(90vw, 780px);">
+      <span style="color: var(--text-secondary);">目前没有任何产品</span><br>做到这个组合
+    </h2>
+    <div class="reveal" style="width: 100%; max-width: min(90vw, 960px); overflow-x: auto;">
+      <table class="compare-table">
+        <thead><tr><th style="width: 140px;">竞品</th><th>模拟炒股</th><th>历史沉浸</th><th>AI 复盘</th><th>量化回测</th><th>财报分析</th></tr></thead>
+        <tbody>
+          <tr><td style="font-weight: 600;">同花顺</td><td><span style="color: var(--stock-down);">✓</span> 实时模拟</td><td style="color: rgba(255,255,255,0.2);">✗</td><td style="color: rgba(255,255,255,0.2);">✗</td><td style="color: rgba(255,255,255,0.2);">✗</td><td style="color: rgba(255,255,255,0.2);">✗</td></tr>
+          <tr><td style="font-weight: 600;">ChartMini / 复盘侠</td><td><span style="color: var(--stock-down);">✓</span> K 线回放</td><td style="color: rgba(255,255,255,0.2);">✗ 无新闻</td><td style="color: rgba(255,255,255,0.2);">✗</td><td style="color: rgba(255,255,255,0.2);">✗</td><td style="color: rgba(255,255,255,0.2);">✗</td></tr>
+          <tr><td style="font-weight: 600;">MindGo / 聚宽</td><td style="color: rgba(255,255,255,0.2);">✗</td><td style="color: rgba(255,255,255,0.2);">✗</td><td style="color: rgba(255,255,255,0.2);">✗</td><td><span style="color: var(--stock-down);">✓</span> 需写代码</td><td style="color: rgba(255,255,255,0.2);">✗</td></tr>
+          <tr><td style="font-weight: 600;">雪球 / 理杏仁</td><td style="color: rgba(255,255,255,0.2);">✗</td><td style="color: rgba(255,255,255,0.2);">✗</td><td style="color: rgba(255,255,255,0.2);">✗</td><td style="color: rgba(255,255,255,0.2);">✗</td><td><span style="color: var(--stock-down);">✓</span> 手动分析</td></tr>
+          <tr class="highlight-row"><td style="color: var(--card-accent); font-weight: 800;">InvestDojo 🥋</td><td><span style="color: var(--stock-down); font-weight: 700;">✓</span></td><td><span style="color: var(--stock-down); font-weight: 700;">✓</span> 新闻+政策</td><td><span style="color: var(--stock-down); font-weight: 700;">✓</span> DeepSeek</td><td><span style="color: var(--stock-down); font-weight: 700;">✓</span> 自然语言</td><td><span style="color: var(--stock-down); font-weight: 700;">✓</span> AI 六维</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 6: Business Model -->
+<section class="slide slide--light">
+  <div class="slide-content">
+    <div class="section-num reveal" style="color: var(--card-accent);">06 · 商业模式</div>
+    <h2 class="section-title reveal" style="color: var(--text-dark); max-width: min(90vw, 700px);">
+      全生命周期覆盖<br><span style="color: var(--card-accent);">三级订阅体系</span>
+    </h2>
+    <div class="grid grid-3 reveal" style="margin-top: var(--content-gap);">
+      <div class="card-light" style="text-align: center;">
+        <div style="font-size: var(--small-size); font-weight: 700; color: var(--stock-down);">🟢 入门级</div>
+        <div class="micro-text" style="color: var(--text-dark-dim);">股市小白</div>
+        <div style="font-family: var(--font-display); font-size: clamp(1.5rem,4vw,2.5rem); font-weight: 900; color: var(--text-dark); margin: clamp(6px,1vh,12px) 0;">免费</div>
+        <div style="text-align: left; font-size: var(--small-size); color: var(--text-dark-dim); display: flex; flex-direction: column; gap: 4px;">
+          <div>✅ 历史情景模拟（游戏化）</div>
+          <div>✅ AI 每日复盘 + 教学</div>
+          <div>✅ 基础财报摘要</div>
+        </div>
+      </div>
+      <div class="card-light" style="text-align: center; border: 2px solid var(--card-accent); position: relative;">
+        <div style="position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: var(--card-accent); color: white; font-size: var(--micro-size); font-weight: 700; padding: 2px 12px; border-radius: 980px;">推荐</div>
+        <div style="font-size: var(--small-size); font-weight: 700; color: var(--card-accent);">🟣 进阶级</div>
+        <div class="micro-text" style="color: var(--text-dark-dim);">有经验散户</div>
+        <div style="font-family: var(--font-display); font-size: clamp(1.5rem,4vw,2.5rem); font-weight: 900; color: var(--text-dark); margin: clamp(6px,1vh,12px) 0;">¥49-99<span style="font-size: var(--body-size); font-weight: 400;">/月</span></div>
+        <div style="text-align: left; font-size: var(--small-size); color: var(--text-dark-dim); display: flex; flex-direction: column; gap: 4px;">
+          <div>✅ 自定义策略回测</div>
+          <div>✅ 深度财报对比分析</div>
+          <div>✅ 自然语言策略生成</div>
+          <div>✅ 策略回放 + 复盘</div>
+        </div>
+      </div>
+      <div class="card-light" style="text-align: center;">
+        <div style="font-size: var(--small-size); font-weight: 700; color: var(--orange);">🟡 专业级</div>
+        <div class="micro-text" style="color: var(--text-dark-dim);">半专业投资者</div>
+        <div style="font-family: var(--font-display); font-size: clamp(1.5rem,4vw,2.5rem); font-weight: 900; color: var(--text-dark); margin: clamp(6px,1vh,12px) 0;">¥199-499<span style="font-size: var(--body-size); font-weight: 400;">/月</span></div>
+        <div style="text-align: left; font-size: var(--small-size); color: var(--text-dark-dim); display: flex; flex-direction: column; gap: 4px;">
+          <div>✅ 高级量化（多因子/多标的）</div>
+          <div>✅ 批量财报 + 行业研报</div>
+          <div>✅ Paper Trading</div>
+          <div>✅ API 接口</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 7: Tech Architecture -->
+<section class="slide slide--dark">
+  <div class="slide-content">
+    <div class="section-num reveal">07 · 技术实力</div>
+    <h2 class="section-title reveal" style="max-width: min(90vw, 700px);">一份代码<br><span style="color: var(--card-accent);">五端部署</span></h2>
+    <p class="body-text reveal" style="color: var(--text-secondary); text-align: center;">92% 代码复用率 · Web / iOS / Android / macOS / Windows</p>
+    <div class="reveal" style="width: 100%; max-width: min(90vw, 960px); display: flex; flex-direction: column; gap: clamp(8px,1.2vh,12px); margin-top: var(--content-gap);">
+      <div style="display: flex; gap: clamp(6px,1vw,12px); justify-content: center; flex-wrap: wrap;">
+        <div class="card" style="flex: 1; min-width: 80px; text-align: center; padding: clamp(8px,1.5vw,16px);">🌐 Web<div class="micro-text" style="color: var(--text-secondary); margin-top: 4px;">Next.js 15</div></div>
+        <div class="card" style="flex: 1; min-width: 80px; text-align: center; padding: clamp(8px,1.5vw,16px);">📱 iOS<div class="micro-text" style="color: var(--text-secondary); margin-top: 4px;">Capacitor 6</div></div>
+        <div class="card" style="flex: 1; min-width: 80px; text-align: center; padding: clamp(8px,1.5vw,16px);">📱 Android<div class="micro-text" style="color: var(--text-secondary); margin-top: 4px;">Capacitor 6</div></div>
+        <div class="card" style="flex: 1; min-width: 80px; text-align: center; padding: clamp(8px,1.5vw,16px);">🖥️ macOS<div class="micro-text" style="color: var(--text-secondary); margin-top: 4px;">Tauri v2</div></div>
+        <div class="card" style="flex: 1; min-width: 80px; text-align: center; padding: clamp(8px,1.5vw,16px);">🖥️ Windows<div class="micro-text" style="color: var(--text-secondary); margin-top: 4px;">Tauri v2</div></div>
+      </div>
+      <div style="color: var(--card-accent); font-size: 18px; text-align: center;">↕</div>
+      <div class="card" style="text-align: center; border-color: var(--card-accent); background: rgba(255,87,34,0.04); max-width: 100%;">
+        <div style="font-weight: 700; color: var(--card-accent); font-size: var(--body-size);">共享业务逻辑层 — TypeScript + Zustand + TanStack Query</div>
+        <div class="micro-text" style="color: var(--text-secondary); margin-top: 4px;">@investdojo/core · @investdojo/ui · @investdojo/api — 100% 跨端复用</div>
+      </div>
+      <div style="color: var(--card-accent); font-size: 18px; text-align: center;">↕</div>
+      <div style="display: flex; gap: clamp(6px,1vw,12px); justify-content: center; flex-wrap: wrap;">
+        <div class="card" style="flex: 1; min-width: 100px; text-align: center; padding: clamp(8px,1.5vw,16px); border-color: rgba(22,199,132,0.3);"><span style="color: var(--stock-down);">Hono API</span><div class="micro-text" style="color: var(--text-secondary); margin-top: 4px;">Edge Runtime</div></div>
+        <div class="card" style="flex: 1; min-width: 100px; text-align: center; padding: clamp(8px,1.5vw,16px); border-color: rgba(191,90,242,0.3);"><span style="color: var(--purple);">Python 回测</span><div class="micro-text" style="color: var(--text-secondary); margin-top: 4px;">FastAPI + VectorBT</div></div>
+        <div class="card" style="flex: 1; min-width: 100px; text-align: center; padding: clamp(8px,1.5vw,16px); border-color: rgba(255,159,10,0.3);"><span style="color: var(--orange);">DeepSeek V3</span><div class="micro-text" style="color: var(--text-secondary); margin-top: 4px;">LLM 分析引擎</div></div>
+        <div class="card" style="flex: 1; min-width: 100px; text-align: center; padding: clamp(8px,1.5vw,16px); border-color: rgba(41,121,255,0.3);"><span style="color: var(--accent-blue);">Supabase</span><div class="micro-text" style="color: var(--text-secondary); margin-top: 4px;">PostgreSQL + Realtime</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 8: AI Architecture -->
+<section class="slide slide--dark">
+  <div class="slide-content">
+    <div class="section-num reveal">08 · 技术壁垒</div>
+    <h2 class="section-title reveal" style="max-width: min(90vw, 780px);">四层架构<br><span style="color: var(--card-accent);">彻底绕开 LLM 限制</span></h2>
+    <p class="body-text reveal" style="color: var(--text-secondary); text-align: center; max-width: min(90vw, 640px);">LLM 是「翻译器」— 把数据翻译成人话，而非数据源</p>
+    <div class="grid grid-4 reveal" style="margin-top: var(--content-gap);">
+      <div class="card" style="text-align: center; border-color: rgba(22,199,132,0.2);">
+        <div style="font-size: clamp(1.2rem,2.5vw,1.8rem); margin-bottom: 6px;">📊</div>
+        <div style="font-size: var(--small-size); font-weight: 700; color: var(--stock-down);">实时数据层</div>
+        <div class="micro-text" style="color: var(--text-secondary); margin-top: 6px;">AKShare + Tushare<br>秒级更新 · 零成本数据</div>
+      </div>
+      <div class="card" style="text-align: center; border-color: rgba(41,121,255,0.2);">
+        <div style="font-size: clamp(1.2rem,2.5vw,1.8rem); margin-bottom: 6px;">🧮</div>
+        <div style="font-size: var(--small-size); font-weight: 700; color: var(--accent-blue);">计算引擎层</div>
+        <div class="micro-text" style="color: var(--text-secondary); margin-top: 6px;">Python 精确计算<br>PE/PB/ROE · LLM 不碰数学</div>
+      </div>
+      <div class="card" style="text-align: center; border-color: rgba(255,159,10,0.2);">
+        <div style="font-size: clamp(1.2rem,2.5vw,1.8rem); margin-bottom: 6px;">🧠</div>
+        <div style="font-size: var(--small-size); font-weight: 700; color: var(--orange);">LLM 分析层</div>
+        <div class="micro-text" style="color: var(--text-secondary); margin-top: 6px;">RAG + Function Calling<br>结构化 Prompt · 只做理解与解释</div>
+      </div>
+      <div class="card" style="text-align: center; border-color: rgba(234,57,67,0.2);">
+        <div style="font-size: clamp(1.2rem,2.5vw,1.8rem); margin-bottom: 6px;">🛡️</div>
+        <div style="font-size: var(--small-size); font-weight: 700; color: var(--stock-up);">事实校验层</div>
+        <div class="micro-text" style="color: var(--text-secondary); margin-top: 6px;">输出 vs API 比对<br>Hallucination Guard · 数据源引用标注</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 9: Cost -->
+<section class="slide slide--light">
+  <div class="slide-content">
+    <div class="section-num reveal" style="color: var(--card-accent);">09 · 成本优势</div>
+    <h2 class="section-title reveal" style="color: var(--text-dark); max-width: min(90vw, 700px);">极致低成本<br><span style="color: var(--card-accent);">高效扩张</span></h2>
+    <div class="grid grid-3 reveal" style="margin-top: var(--content-gap);">
+      <div class="card-light" style="text-align: center;">
+        <div style="font-family: var(--font-display); font-size: clamp(1.8rem,4vw,2.8rem); font-weight: 900; color: var(--stock-down);">¥0</div>
+        <div class="caption-text" style="color: var(--text-dark-dim);">数据采集成本</div>
+        <div class="micro-text" style="color: rgba(0,0,0,0.3); margin-top: 6px;">AKShare + BaoStock · 开源免费</div>
+      </div>
+      <div class="card-light" style="text-align: center;">
+        <div style="font-family: var(--font-display); font-size: clamp(1.8rem,4vw,2.8rem); font-weight: 900; color: var(--accent-blue);">¥0.01</div>
+        <div class="caption-text" style="color: var(--text-dark-dim);">LLM 成本 / 用户 / 天</div>
+        <div class="micro-text" style="color: rgba(0,0,0,0.3); margin-top: 6px;">DeepSeek V3 · ¥1/百万 tokens</div>
+      </div>
+      <div class="card-light" style="text-align: center;">
+        <div style="font-family: var(--font-display); font-size: clamp(1.8rem,4vw,2.8rem); font-weight: 900; color: var(--orange);">92%</div>
+        <div class="caption-text" style="color: var(--text-dark-dim);">代码跨端复用率</div>
+        <div class="micro-text" style="color: rgba(0,0,0,0.3); margin-top: 6px;">一份代码 · 五端部署</div>
+      </div>
+    </div>
+    <div class="grid grid-3 reveal" style="margin-top: clamp(4px,0.5vh,8px);">
+      <div class="card-light" style="text-align: center; padding: clamp(10px,1.5vw,18px);">
+        <div style="font-size: var(--small-size); font-weight: 700; color: var(--stock-down);">MVP 阶段</div>
+        <div style="font-family: var(--font-display); font-size: clamp(1.2rem,2.5vw,1.6rem); font-weight: 900; color: var(--text-dark);">¥200<span style="font-size: var(--small-size); font-weight: 400;">/月</span></div>
+        <div class="micro-text" style="color: rgba(0,0,0,0.3);">0 - 1,000 DAU</div>
+      </div>
+      <div class="card-light" style="text-align: center; padding: clamp(10px,1.5vw,18px);">
+        <div style="font-size: var(--small-size); font-weight: 700; color: var(--accent-blue);">增长期</div>
+        <div style="font-family: var(--font-display); font-size: clamp(1.2rem,2.5vw,1.6rem); font-weight: 900; color: var(--text-dark);">¥2,000<span style="font-size: var(--small-size); font-weight: 400;">/月</span></div>
+        <div class="micro-text" style="color: rgba(0,0,0,0.3);">1K - 10K DAU</div>
+      </div>
+      <div class="card-light" style="text-align: center; padding: clamp(10px,1.5vw,18px);">
+        <div style="font-size: var(--small-size); font-weight: 700; color: var(--orange);">规模化</div>
+        <div style="font-family: var(--font-display); font-size: clamp(1.2rem,2.5vw,1.6rem); font-weight: 900; color: var(--text-dark);">¥20,000<span style="font-size: var(--small-size); font-weight: 400;">/月</span></div>
+        <div class="micro-text" style="color: rgba(0,0,0,0.3);">10K - 100K DAU</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 10: Roadmap -->
+<section class="slide slide--dark">
+  <div class="slide-content">
+    <div class="section-num reveal">10 · 执行计划</div>
+    <h2 class="section-title reveal" style="max-width: min(90vw, 700px);">20 周<br><span style="color: var(--card-accent);">全端上线</span></h2>
+    <div class="reveal timeline" style="margin-top: var(--content-gap);">
+      <div class="timeline-item">
+        <div><div class="timeline-dot" style="background: var(--stock-down);"></div><div class="timeline-line"></div></div>
+        <div style="flex: 1;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;"><span class="tag tag-green">Phase 1</span><span class="micro-text" style="color: var(--text-secondary);">W1 - W8</span></div>
+          <div style="font-size: var(--body-size); font-weight: 700;">Web MVP — 历史情景模拟炒股</div>
+          <div class="caption-text" style="color: var(--text-secondary);">4 个历史场景 · K 线回放 · 新闻时间线 · AI 复盘 · 用户认证</div>
+          <span class="tag tag-green" style="margin-top: 6px;">✅ 已完成</span>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div><div class="timeline-dot" style="background: var(--accent-blue);"></div><div class="timeline-line"></div></div>
+        <div style="flex: 1;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;"><span class="tag tag-blue">Phase 2</span><span class="micro-text" style="color: var(--text-secondary);">W9 - W13</span></div>
+          <div style="font-size: var(--body-size); font-weight: 700;">量化回测 + 移动端上线</div>
+          <div class="caption-text" style="color: var(--text-secondary);">Python 回测微服务 · 自然语言策略 · iOS / Android · 订阅支付</div>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div><div class="timeline-dot" style="background: var(--purple);"></div><div class="timeline-line"></div></div>
+        <div style="flex: 1;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;"><span class="tag tag-purple">Phase 3</span><span class="micro-text" style="color: var(--text-secondary);">W14 - W18</span></div>
+          <div style="font-size: var(--body-size); font-weight: 700;">财报分析 + 桌面端 + 多端同步</div>
+          <div class="caption-text" style="color: var(--text-secondary);">六维财报分析 · Tauri 桌面端 · Supabase Realtime 跨端同步</div>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div><div class="timeline-dot" style="background: var(--orange);"></div></div>
+        <div style="flex: 1;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;"><span class="tag tag-orange">Phase 4</span><span class="micro-text" style="color: var(--text-secondary);">W19+</span></div>
+          <div style="font-size: var(--body-size); font-weight: 700;">持续迭代</div>
+          <div class="caption-text" style="color: var(--text-secondary);">Paper Trading · 社区排行榜 · API 开放平台 · 港股/美股国际化</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 11: Risk -->
+<section class="slide slide--dark">
+  <div class="slide-content">
+    <div class="section-num reveal">11 · 风险与缓解</div>
+    <h2 class="section-title reveal" style="max-width: min(90vw, 700px);">已识别风险<br><span style="color: var(--text-secondary);">均有明确应对</span></h2>
+    <div class="grid grid-2 reveal" style="margin-top: var(--content-gap); max-width: min(90vw, 880px);">
+      <div class="card" style="border-color: rgba(234,57,67,0.15);">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: clamp(6px,1vh,12px);"><span class="tag tag-red">高优</span><span style="font-size: var(--body-size); font-weight: 700;">合规风险</span></div>
+        <div class="caption-text" style="color: var(--text-secondary);">AI 输出可能被认定为投资建议</div>
+        <div class="caption-text" style="color: var(--stock-down); margin-top: 6px;">✅ 定位「教育工具」 · 全面免责声明 · 无实盘交易 · 咨询律师</div>
+      </div>
+      <div class="card" style="border-color: rgba(234,57,67,0.15);">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: clamp(6px,1vh,12px);"><span class="tag tag-red">高优</span><span style="font-size: var(--body-size); font-weight: 700;">LLM 幻觉</span></div>
+        <div class="caption-text" style="color: var(--text-secondary);">可能编造虚假财务数据</div>
+        <div class="caption-text" style="color: var(--stock-down); margin-top: 6px;">✅ 数值由 Python 计算 · Hallucination Guard · 输出交叉校验</div>
+      </div>
+      <div class="card" style="border-color: rgba(255,159,10,0.15);">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: clamp(6px,1vh,12px);"><span class="tag tag-orange">中等</span><span style="font-size: var(--body-size); font-weight: 700;">数据源稳定性</span></div>
+        <div class="caption-text" style="color: var(--text-secondary);">AKShare/Tushare 偶尔不稳定</div>
+        <div class="caption-text" style="color: var(--stock-down); margin-top: 6px;">✅ 多数据源备份 · Parquet 本地缓存 · 降级策略</div>
+      </div>
+      <div class="card" style="border-color: rgba(255,159,10,0.15);">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: clamp(6px,1vh,12px);"><span class="tag tag-orange">中等</span><span style="font-size: var(--body-size); font-weight: 700;">代码安全</span></div>
+        <div class="caption-text" style="color: var(--text-secondary);">LLM 生成的回测代码可能有漏洞</div>
+        <div class="caption-text" style="color: var(--stock-down); margin-top: 6px;">✅ RestrictedPython 沙箱 · AST 白名单 · 30s 超时 · 512MB 限制</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 12: CTA -->
+<section class="slide slide--dark">
+  <div class="slide-content">
+    <div class="reveal" style="font-size: clamp(2.5rem,6vw,4rem);">🥋</div>
+    <h2 class="hero-title reveal" style="max-width: min(90vw, 700px);">投资道场<br><span style="color: var(--card-accent);">等你入场</span></h2>
+    <p class="body-text reveal" style="color: var(--text-secondary); text-align: center; max-width: min(90vw, 560px);">模拟炒股 × 量化回测 × 财报分析<br>一份代码 · 五端部署 · AI 驱动</p>
+    <div class="reveal" style="display: flex; gap: clamp(12px,2vw,24px); margin-top: clamp(16px,3vw,32px); flex-wrap: wrap; justify-content: center;">
+      <div class="card" style="text-align: center; min-width: 120px;">
+        <div class="micro-text" style="color: var(--text-secondary);">当前阶段</div>
+        <div style="font-size: var(--body-size); font-weight: 700; color: var(--stock-down); margin-top: 4px;">Web MVP 已上线</div>
+      </div>
+      <div class="card" style="text-align: center; min-width: 120px;">
+        <div class="micro-text" style="color: var(--text-secondary);">寻求</div>
+        <div style="font-size: var(--body-size); font-weight: 700; color: var(--accent-blue); margin-top: 4px;">种子轮融资</div>
+      </div>
+      <div class="card" style="text-align: center; min-width: 120px;">
+        <div class="micro-text" style="color: var(--text-secondary);">全端上线</div>
+        <div style="font-size: var(--body-size); font-weight: 700; color: var(--orange); margin-top: 4px;">20 周</div>
+      </div>
+    </div>
+    <div class="reveal" style="margin-top: clamp(16px,3vw,32px);"><button class="pill-cta" onclick="goToSlide(0)">← 返回首页</button></div>
+    <p class="micro-text reveal" style="color: rgba(255,255,255,0.15); margin-top: clamp(12px,2vw,24px);">© 2026 InvestDojo · 本平台仅为教育工具，不构成任何投资建议</p>
+  </div>
+</section>
+
+<!-- ===== JavaScript ===== -->
+<script>
+(function(){
+  /* ===== Slide Presentation Controller ===== */
+  const slides = document.querySelectorAll('.slide');
+  const total = slides.length;
+  let current = 0;
+  const progressFill = document.getElementById('progressFill');
+  const slideCounter = document.getElementById('slideCounter');
+  const navDots = document.getElementById('navDots');
+
+  // Build dots
+  navDots.innerHTML = '';
+  for(let i=0;i<total;i++){
+    const d = document.createElement('button');
+    d.className = 'nav-dot' + (i===0?' active':'');
+    d.onclick = () => goToSlide(i);
+    d.setAttribute('aria-label', 'Go to slide '+(i+1));
+    navDots.appendChild(d);
+  }
+
+  function update(){
+    progressFill.style.width = ((current+1)/total*100)+'%';
+    slideCounter.textContent = (current+1)+' / '+total;
+    navDots.querySelectorAll('.nav-dot').forEach((d,i)=> d.className='nav-dot'+(i===current?' active':''));
+    slides.forEach((s,i)=>{
+      s.classList.remove('visible');
+      if(i===current) s.classList.add('visible');
+    });
+    // Scroll snap
+    slides[current].scrollIntoView({behavior:'smooth'});
+  }
+
+  window.goToSlide = function(i){ if(i>=0&&i<total){ current=i; update(); } };
+  window.nextSlide = function(){ goToSlide(current+1); };
+  window.prevSlide = function(){ goToSlide(current-1); };
+
+  // Keyboard
+  document.addEventListener('keydown', e => {
+    if(e.target.getAttribute && e.target.getAttribute('contenteditable')) return;
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){e.preventDefault();nextSlide();}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();prevSlide();}
+    else if(e.key==='Home'){e.preventDefault();goToSlide(0);}
+    else if(e.key==='End'){e.preventDefault();goToSlide(total-1);}
+  });
+
+  // Touch
+  let tx=0;
+  document.addEventListener('touchstart',e=>{tx=e.changedTouches[0].screenX;},{passive:true});
+  document.addEventListener('touchend',e=>{const d=tx-e.changedTouches[0].screenX;if(Math.abs(d)>60){d>0?nextSlide():prevSlide();}},{passive:true});
+
+  // Wheel
+  let wt=null;
+  document.addEventListener('wheel',e=>{if(wt)return;wt=setTimeout(()=>{wt=null;},600);e.deltaY>0?nextSlide():prevSlide();},{passive:true});
+
+  update();
+
+  /* ===== Inline Editor ===== */
+  const editToggle = document.getElementById('editToggle');
+  const editBanner = document.getElementById('editBanner');
+  const editHotzone = document.getElementById('editHotzone');
+  let isEditActive = false;
+  let hideTimeout = null;
+
+  const editor = {
+    get isActive(){ return isEditActive; },
+    toggleEditMode(){
+      isEditActive = !isEditActive;
+      document.body.classList.toggle('edit-active', isEditActive);
+      editToggle.classList.toggle('active', isEditActive);
+      editBanner.classList.toggle('active', isEditActive);
+      editToggle.textContent = isEditActive ? '✓' : '✏️';
+      // Toggle contenteditable on all text elements
+      const targets = document.querySelectorAll('h1,h2,p,div:not(.slide):not(.slide-content):not(.deck):not(.grid):not(.grid-2):not(.grid-3):not(.grid-4):not(.card):not(.card-light):not(.accent-card):not(.nav-dots):not(.progress-bar):not(.edit-banner):not(.nav-dot):not(.timeline):not(.timeline-item),span,td,th');
+      if(isEditActive){
+        targets.forEach(el=>{
+          if(el.children.length===0 || (el.children.length>0 && el.textContent.trim().length<200)){
+            el.setAttribute('contenteditable','true');
+          }
+        });
+      } else {
+        document.querySelectorAll('[contenteditable]').forEach(el=>el.removeAttribute('contenteditable'));
+      }
+    },
+    exportFile(){
+      const editableEls = Array.from(document.querySelectorAll('[contenteditable]'));
+      editableEls.forEach(el=>el.removeAttribute('contenteditable'));
+      document.body.classList.remove('edit-active');
+      editToggle.classList.remove('active','show');
+      editBanner.classList.remove('active','show');
+      const html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+      document.body.classList.add('edit-active');
+      editableEls.forEach(el=>el.setAttribute('contenteditable','true'));
+      editToggle.classList.add('active');
+      editBanner.classList.add('active');
+      const blob = new Blob([html],{type:'text/html'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'investdojo-pitch-swiss.html';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+  };
+
+  editToggle.addEventListener('click', ()=>editor.toggleEditMode());
+  editHotzone.addEventListener('click', ()=>editor.toggleEditMode());
+
+  editHotzone.addEventListener('mouseenter',()=>{clearTimeout(hideTimeout);editToggle.classList.add('show');});
+  editHotzone.addEventListener('mouseleave',()=>{hideTimeout=setTimeout(()=>{if(!editor.isActive)editToggle.classList.remove('show');},400);});
+  editToggle.addEventListener('mouseenter',()=>{clearTimeout(hideTimeout);});
+  editToggle.addEventListener('mouseleave',()=>{hideTimeout=setTimeout(()=>{if(!editor.isActive)editToggle.classList.remove('show');},400);});
+
+  document.addEventListener('keydown',e=>{
+    if((e.key==='e'||e.key==='E')&&!e.target.getAttribute('contenteditable')){editor.toggleEditMode();}
+    if(e.key==='s'&&(e.ctrlKey||e.metaKey)&&editor.isActive){e.preventDefault();editor.exportFile();}
+  });
+})();
+</script>
+</body>
+</html>

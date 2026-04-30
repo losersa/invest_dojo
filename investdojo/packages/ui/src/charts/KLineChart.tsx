@@ -39,6 +39,8 @@ export interface KLineChartProps {
   availableTimeFrames?: TimeFrame[];
   /** 时间周期变更回调 */
   onTimeFrameChange?: (tf: TimeFrame) => void;
+  /** 固定可见 K 线根数（滑动窗口）。不传则自适应全部数据。 */
+  visibleBars?: number;
   onKlineClick?: (kline: KLine) => void;
 }
 
@@ -272,6 +274,7 @@ export function KLineChart({
   timeFrame = "1d",
   availableTimeFrames = ["1d", "1w", "1M"],
   onTimeFrameChange,
+  visibleBars,
   onKlineClick,
 }: KLineChartProps) {
   const mainChartRef = useRef<HTMLDivElement>(null);
@@ -423,7 +426,14 @@ export function KLineChart({
       const s3 = chart.addLineSeries({ color: "#22c55e", lineWidth: 1, priceLineVisible: false, lastValueVisible: false }); s3.setData(boll.lower); indicatorSeries.push(s3);
     }
 
-    chart.timeScale().fitContent();
+    // 固定时间窗口：如果指定了 visibleBars，只显示最近 visibleBars 根
+    if (visibleBars && klines.length > 0) {
+      const from = Math.max(0, klines.length - visibleBars);
+      const to = klines.length - 1;
+      chart.timeScale().setVisibleLogicalRange({ from, to: to + 1 });
+    } else {
+      chart.timeScale().fitContent();
+    }
     chartApiRef.current = chart;
 
     // 响应式
@@ -437,7 +447,7 @@ export function KLineChart({
       chart.remove();
       chartApiRef.current = null;
     };
-  }, [klines, news, height, darkMode, mainIndicator, maParams, emaParams, highPoint, lowPoint, timeFrame]);
+  }, [klines, news, height, darkMode, mainIndicator, maParams, emaParams, highPoint, lowPoint, timeFrame, visibleBars]);
 
   // ==================== 副图 ====================
   useEffect(() => {
@@ -494,7 +504,13 @@ export function KLineChart({
       chart.addLineSeries({ color: "rgba(34,197,94,0.3)", lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false }).setData(refData30);
     }
 
-    chart.timeScale().fitContent();
+    if (visibleBars && klines.length > 0) {
+      const from = Math.max(0, klines.length - visibleBars);
+      const to = klines.length - 1;
+      chart.timeScale().setVisibleLogicalRange({ from, to: to + 1 });
+    } else {
+      chart.timeScale().fitContent();
+    }
     subChartApiRef.current = chart;
 
     const handleResize = () => {
@@ -507,7 +523,7 @@ export function KLineChart({
       chart.remove();
       subChartApiRef.current = null;
     };
-  }, [klines, darkMode, subIndicator]);
+  }, [klines, darkMode, subIndicator, visibleBars]);
 
   // 同步主图副图的时间轴滚动
   useEffect(() => {
