@@ -77,30 +77,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
-    # 需要真实的 Redis + MinIO 才能测 /health/ready
-    services:
-      redis:
-        image: redis:7-alpine
-        ports: ["6379:6379"]
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      minio:
-        image: bitnami/minio:latest
-        ports:
-          - "9000:9000"
-          - "9001:9001"
-        env:
-          MINIO_ROOT_USER: investdojo
-          MINIO_ROOT_PASSWORD: investdojo_dev_only
-        options: >-
-          --health-cmd "curl -sf http://localhost:9000/minio/health/live || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
+    # 注意：基础的 /health（liveness）不连 Redis/MinIO/Supabase，
+    # 所以 smoke 测试不需要起基础设施 service container。
+    # /health/ready（readiness）需要外部依赖，但我们暂不在 CI 里验证它。
 
     steps:
       - uses: actions/checkout@v4
@@ -120,22 +99,23 @@ jobs:
       - name: 启动服务 + 验证端点
         env:
           PYTHONPATH: "."
-          REDIS_URL: redis://localhost:6379/0
-          MINIO_ENDPOINT: http://localhost:9000
-          MINIO_ROOT_USER: investdojo
-          MINIO_ROOT_PASSWORD: investdojo_dev_only
-          # 服务启动时会试图连 Supabase，但用空 key 健康检查会 warn 而非 crash
+          # 空 key，/health 不需要
           SUPABASE_SERVICE_ROLE_KEY: ""
           ENV: test
           LOG_FORMAT: json
         run: |
-          # 不用 scripts/smoke.sh（依赖 docker-compose 基础设施）
-          # 直接启动服务 + 检查 /health（不检查 /health/ready，因为无 Supabase）
-          for svc in feature train infer backtest monitor; do
-            port=$(python3 -c "
-          ports = {'feature': 8001, 'train': 8002, 'infer': 8003, 'backtest': 8004, 'monitor': 8005}
-          print(ports['$svc'])
-          ")
+          # 启动 6 个服务（data + feature + train + infer + backtest + monitor）
+          # 注意 data-svc 用端口 8000（T-1.07 新增）
+          declare -A PORTS=(
+            [data]=8000
+            [feature]=8001
+            [train]=8002
+            [infer]=8003
+            [backtest]=8004
+            [monitor]=8005
+          )
+          for svc in "${!PORTS[@]}"; do
+            port=${PORTS[$svc]}
             uv run uvicorn main:app \
               --app-dir "${svc}-svc" \
               --host 127.0.0.1 \
@@ -143,23 +123,24 @@ jobs:
               --log-level warning &
             echo "started $svc on :$port (PID=$!)"
           done
-          
+
           # 等待就绪
           sleep 5
-          
-          for port in 8001 8002 8003 8004 8005; do
-            echo "=== :$port ==="
+
+          # 验证 /health
+          for port in 8000 8001 8002 8003 8004 8005; do
+            echo "=== :$port /health ==="
             curl -sf --retry 3 --retry-delay 1 http://localhost:$port/health
             echo ""
           done
-          
-          # 确保 /docs 也能访问
-          for port in 8001 8002 8003 8004 8005; do
+
+          # 验证 /docs
+          for port in 8000 8001 8002 8003 8004 8005; do
             code=$(curl -sf -o /dev/null -w "%{http_code}" http://localhost:$port/docs)
             if [ "$code" != "200" ]; then
               echo "❌ :$port/docs 返回 $code"
               exit 1
             fi
           done
-          
-          echo "✅ 冒烟测试通过"
+
+          echo "✅ 冒烟测试通过（6 个 svc 全部健康）"

@@ -14,9 +14,11 @@ from common import (
 
 def test_settings_loaded():
     """配置能正常加载"""
-    assert settings.env == "development"
+    # env 的合法值集合（不硬编码 development，让 CI 可覆盖 test / staging 等）
+    assert settings.env in {"development", "test", "staging", "production"}
     assert settings.supabase_url.startswith("https://")
-    assert 8001 <= settings.feature_svc_port <= 8005
+    # 支持 data-svc 的 8000 端口（T-1.07 新增）
+    assert 8000 <= settings.feature_svc_port <= 8005
 
 
 def test_logger():
