@@ -3,6 +3,7 @@
 所有节点都是 Pydantic 模型，方便 JSON 序列化（给前端可视化 / DB 缓存）。
 设计原则：结构简单、字段自解释、类型区分用 discriminator。
 """
+
 from __future__ import annotations
 
 from typing import Any, Literal
@@ -10,6 +11,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 # ── 叶子节点 ────────────────────────────────────────────────────
+
 
 class NumberLit(BaseModel):
     """数字字面量：1.5 / -3 / 0.8"""
@@ -36,6 +38,7 @@ class FieldRef(BaseModel):
 
 
 # ── 复合节点 ────────────────────────────────────────────────────
+
 
 class Call(BaseModel):
     """函数调用：MA(close, 20) / RSI(14) / cross_up(a, b)"""

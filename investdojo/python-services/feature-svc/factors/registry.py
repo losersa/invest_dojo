@@ -5,6 +5,7 @@
 2. 未来要加新函数只改这一处
 3. 语义校验阶段用它查未知函数
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

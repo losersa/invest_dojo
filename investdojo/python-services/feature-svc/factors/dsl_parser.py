@@ -17,6 +17,7 @@
 - 语法错（括号不配、缺参数）→ INVALID_FORMULA + position + hint
 - 未知函数 → UNKNOWN_FUNCTION + function_name
 """
+
 from __future__ import annotations
 
 import re

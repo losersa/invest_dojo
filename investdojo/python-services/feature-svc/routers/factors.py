@@ -185,7 +185,9 @@ class ValidateFormulaRequest(BaseModel):
     参考 docs/api/02_因子库API.md §4.4
     """
 
-    formula: str = Field(..., description="DSL 表达式", examples=["MA(close, 20) cross_up MA(close, 60)"])
+    formula: str = Field(
+        ..., description="DSL 表达式", examples=["MA(close, 20) cross_up MA(close, 60)"]
+    )
     formula_type: str = Field("dsl", pattern="^(dsl|python)$")
 
 
