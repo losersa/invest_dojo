@@ -108,21 +108,35 @@ def fetch_indexes(start_date: str, end_date: str) -> dict:
 
 # ─── 2. 拉北向资金 ─────────────────────────────────────
 def fetch_north_capital() -> dict:
-    """返回 {date: 当日净买入万元（沪+深）}"""
-    print(f"  💰 拉北向资金（沪+深）...")
+    """返回 {date: 当日净买入万元（沪+深）}
+
+    重试策略（应对东方财富偶发 SSL EOF / DNS 失败）：
+    - 5 次重试，指数退避 2/4/8/16/32 秒
+    - 每次重试间会尝试清 DNS 缓存（Mac scutil 不行就算了）
+    """
+    print("  💰 拉北向资金（沪+深）...")
     result = {}
 
-    for name, key in [("沪股通", "sh"), ("深股通", "sz")]:
-        for retry in range(3):
+    # 退避序列
+    backoff = [2, 4, 8, 16, 32]
+
+    for name, _key in [("沪股通", "sh"), ("深股通", "sz")]:
+        df = None
+        for retry, wait in enumerate(backoff):
             try:
                 df = ak.stock_hsgt_hist_em(symbol=name)
-                break
+                if df is not None and len(df) > 0:
+                    break
+                # 空 df 也当失败处理
+                raise RuntimeError("empty result")
             except Exception as e:
-                if retry == 2:
-                    print(f"    ❌ {name} 失败: {e}")
+                err_type = type(e).__name__
+                if retry == len(backoff) - 1:
+                    print(f"    ❌ {name} 失败（{retry + 1}/{len(backoff)} {err_type}）: {e}")
                     df = None
                     break
-                time.sleep(2)
+                print(f"    ⚠ {name} 第 {retry + 1}/{len(backoff)} 次失败（{err_type}），{wait}s 后重试")
+                time.sleep(wait)
         if df is None or len(df) == 0:
             continue
         print(f"    {name}: {len(df)} 行 ({df.iloc[0, 0]} ~ {df.iloc[-1, 0]})")

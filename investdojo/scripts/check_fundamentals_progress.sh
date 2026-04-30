@@ -34,27 +34,38 @@ else
 fi
 echo ""
 
-# 3. 数据库落库（权威）
+# 3. 数据库落库（权威）—— 走 Management API 执行真实 SQL
+# 为什么不用 PostgREST select=symbol？单页硬上限 1000 行，distinct 会失真
 echo "【3】数据库 fundamentals 表实时统计"
-source apps/server/.env
-RESP=$(curl -s -X POST "${SUPABASE_URL}/rest/v1/rpc/exec_sql" \
-  -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-  -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-  -H "Content-Type: application/json" 2>/dev/null || echo "")
 
-# 用 PostgREST HEAD 拿 Content-Range（最快）
-TOTAL=$(curl -s -I "${SUPABASE_URL}/rest/v1/fundamentals?select=id" \
-  -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-  -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-  -H "Prefer: count=exact" \
-  -H "Range: 0-0" 2>/dev/null | grep -i "content-range" | awk -F'/' '{print $2}' | tr -d '\r\n')
+# 优先读 ~/.investdojo.env（中心化凭证），fallback 回 apps/server/.env
+if [ -f "$HOME/.investdojo.env" ]; then
+  # shellcheck disable=SC1091
+  set -a; source "$HOME/.investdojo.env"; set +a
+else
+  # shellcheck disable=SC1091
+  source apps/server/.env
+fi
 
-SYMBOLS=$(curl -s "${SUPABASE_URL}/rest/v1/fundamentals?select=symbol" \
-  -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-  -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-  2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(set(r['symbol'] for r in d)))" 2>/dev/null || echo "?")
+if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ] || [ -z "${SUPABASE_URL:-}" ]; then
+  echo "  ⚠ 缺少 SUPABASE_ACCESS_TOKEN 或 SUPABASE_URL，跳过 DB 统计"
+else
+  PROJECT_ID=$(echo "$SUPABASE_URL" | sed -E 's|https://([^.]+)\..*|\1|')
+  STATS=$(curl -sS -X POST "https://api.supabase.com/v1/projects/${PROJECT_ID}/database/query" \
+    -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{"query":"SELECT COUNT(*) AS total, COUNT(DISTINCT symbol) AS symbols, MIN(report_date) AS earliest, MAX(report_date) AS latest FROM fundamentals"}' \
+    2>/dev/null)
 
-echo "  总条数: ${TOTAL:-?}"
-echo "  覆盖股票: ${SYMBOLS} 支"
+  TOTAL=$(echo "$STATS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['total'])" 2>/dev/null || echo "?")
+  SYMBOLS=$(echo "$STATS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['symbols'])" 2>/dev/null || echo "?")
+  EARLIEST=$(echo "$STATS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0].get('earliest') or '-')" 2>/dev/null || echo "?")
+  LATEST=$(echo "$STATS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0].get('latest') or '-')" 2>/dev/null || echo "?")
+
+  echo "  总条数: ${TOTAL}"
+  echo "  覆盖股票: ${SYMBOLS} 支"
+  echo "  报告期范围: ${EARLIEST} ~ ${LATEST}"
+fi
+
 echo ""
 echo "══════════════════════════════════════════"
