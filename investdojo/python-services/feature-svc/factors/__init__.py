@@ -2,6 +2,7 @@
 
 from .ast_nodes import BinOp, BoolLit, Call, FieldRef, Node, NumberLit, UnaryOp, dump_ast
 from .dsl_parser import DSLError, ParseResult, UnknownFunctionError, parse_formula
+from .engine import Engine, EngineError, Panel, eval_ast, eval_instant
 from .registry import (
     BUILTIN_FIELDS,
     OPERATORS,
@@ -26,6 +27,12 @@ __all__ = [
     "parse_formula",
     "DSLError",
     "UnknownFunctionError",
+    # Engine
+    "Engine",
+    "EngineError",
+    "Panel",
+    "eval_ast",
+    "eval_instant",
     # Registry
     "BUILTIN_FIELDS",
     "OPERATORS",
