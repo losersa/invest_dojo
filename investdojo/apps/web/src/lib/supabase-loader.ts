@@ -143,23 +143,24 @@ export async function loadMinuteKlines(
 ): Promise<KLine[]> {
   console.log(`[Supabase] 加载分钟K线: ${symbol} (${scenarioId})`);
 
-  let query = supabase
-    .from("klines_all")
-    .select("*")
-    .eq("scenario_id", scenarioId)
-    .eq("symbol", symbol)
-    .eq("timeframe", "5m")
-    .order("dt", { ascending: true });
-
-  if (dateStart) query = query.gte("dt", `${dateStart}T00:00:00`);
-  if (dateEnd) query = query.lte("dt", `${dateEnd}T23:59:59`);
-
   // 分页加载（Supabase 默认 1000 行限制）
+  // 关键：每页必须重新构造 query，复用同一 query 对象会导致分页失效
   const allRows: Array<Record<string, unknown>> = [];
   let offset = 0;
   const pageSize = 1000;
 
   while (true) {
+    let query = supabase
+      .from("klines_all")
+      .select("*")
+      .eq("scenario_id", scenarioId)
+      .eq("symbol", symbol)
+      .eq("timeframe", "5m")
+      .order("dt", { ascending: true });
+
+    if (dateStart) query = query.gte("dt", `${dateStart}T00:00:00`);
+    if (dateEnd) query = query.lte("dt", `${dateEnd}T23:59:59`);
+
     const { data, error } = await query.range(offset, offset + pageSize - 1);
     if (error) {
       console.error("[Supabase] 分钟K线加载失败:", error.message);
@@ -218,31 +219,84 @@ export async function has5minData(scenarioId: string): Promise<boolean> {
  */
 export function aggregateMinuteKlines(
   klines5m: KLine[],
-  targetTimeframe: "15m" | "1h" | "4h",
+  targetTimeframe: "15m" | "1h" | "4h" | "1d" | "1w" | "1M",
 ): KLine[] {
   if (klines5m.length === 0) return [];
 
-  // 每个目标周期包含多少个 5 分钟柱
-  const barsPerGroup = { "15m": 3, "1h": 12, "4h": 48 }[targetTimeframe];
+  // 高频周期：按固定 5m 柱数量分组
+  if (targetTimeframe === "15m" || targetTimeframe === "1h" || targetTimeframe === "4h") {
+    const barsPerGroup = { "15m": 3, "1h": 12, "4h": 48 }[targetTimeframe];
+    const groups: Map<number, KLine[]> = new Map();
 
-  const groups: Map<number, KLine[]> = new Map();
+    for (const k of klines5m) {
+      const unixSec = Number(k.date);
+      const intervalSec = barsPerGroup * 5 * 60;
+      const groupKey = Math.floor(unixSec / intervalSec) * intervalSec;
+      if (!groups.has(groupKey)) groups.set(groupKey, []);
+      groups.get(groupKey)!.push(k);
+    }
+
+    const result: KLine[] = [];
+    const sortedKeys = Array.from(groups.keys()).sort((a, b) => a - b);
+
+    for (const key of sortedKeys) {
+      const arr = groups.get(key)!;
+      result.push({
+        date: String(key),
+        open: arr[0].open,
+        high: Math.max(...arr.map((a) => a.high)),
+        low: Math.min(...arr.map((a) => a.low)),
+        close: arr[arr.length - 1].close,
+        volume: arr.reduce((s, a) => s + a.volume, 0),
+        turnover: arr.reduce((s, a) => s + a.turnover, 0),
+        preClose: arr[0].open,
+        change: arr[arr.length - 1].close - arr[0].open,
+        changePercent:
+          arr[0].open > 0
+            ? Math.round(
+                ((arr[arr.length - 1].close - arr[0].open) / arr[0].open) * 10000,
+              ) / 100
+            : 0,
+      });
+    }
+
+    console.log(`[聚合] 5m → ${targetTimeframe}: ${klines5m.length} → ${result.length} 条`);
+    return result;
+  }
+
+  // 日/周/月 K：按日期字符串分组
+  const groups: Map<string, KLine[]> = new Map();
 
   for (const k of klines5m) {
     const unixSec = Number(k.date);
-    const intervalSec = barsPerGroup * 5 * 60; // 聚合间隔秒数
-    const groupKey = Math.floor(unixSec / intervalSec) * intervalSec;
+    const d = new Date(unixSec * 1000);
+    let key: string;
 
-    if (!groups.has(groupKey)) groups.set(groupKey, []);
-    groups.get(groupKey)!.push(k);
+    if (targetTimeframe === "1d") {
+      // 按日分组
+      key = d.toISOString().slice(0, 10);
+    } else if (targetTimeframe === "1w") {
+      // 按周一分组
+      const day = d.getDay();
+      const mondayOffset = day === 0 ? -6 : 1 - day;
+      const monday = new Date(d.getTime() + mondayOffset * 86400000);
+      key = monday.toISOString().slice(0, 10);
+    } else {
+      // 按月分组
+      key = d.toISOString().slice(0, 7) + "-01";
+    }
+
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(k);
   }
 
   const result: KLine[] = [];
-  const sortedKeys = Array.from(groups.keys()).sort((a, b) => a - b);
+  const sortedKeys = Array.from(groups.keys()).sort();
 
   for (const key of sortedKeys) {
     const arr = groups.get(key)!;
     result.push({
-      date: String(key), // Unix 秒
+      date: key, // 日K 用 "YYYY-MM-DD" 字符串（Lightweight Charts 日级格式）
       open: arr[0].open,
       high: Math.max(...arr.map((a) => a.high)),
       low: Math.min(...arr.map((a) => a.low)),
