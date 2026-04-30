@@ -52,6 +52,7 @@ class SupabaseClient:
         filters: dict[str, Any] | None = None,
         order: str | None = None,
         limit: int | None = None,
+        offset: int | None = None,
     ) -> list[dict[str, Any]]:
         """单页查询（默认 1000 行上限）
 
@@ -61,8 +62,10 @@ class SupabaseClient:
             filters: {"symbol": "eq.600519"} 或 {"dt": "gte.2024-01-01"}
                     格式遵循 PostgREST：{"column": "operator.value"}
                     operator：eq/neq/gt/gte/lt/lte/like/ilike/in/is
-            order: "dt.asc" 或 "dt.desc"
-            limit: 单次返回上限
+                    特殊键 "or" 用于传 or=(...) 组合查询
+            order: "dt.asc" 或 "dt.desc"（支持多字段用 "," 分隔）
+            limit: 单次返回上限（使用 limit 参数）
+            offset: 偏移量（用 Range header 实现）
         """
         params: dict[str, Any] = {"select": columns}
         if filters:
@@ -70,10 +73,19 @@ class SupabaseClient:
                 params[k] = v
         if order:
             params["order"] = order
-        if limit:
+        if limit is not None:
             params["limit"] = limit
 
-        resp = self._http.get(f"{self.url}/rest/v1/{table}", params=params)
+        headers: dict[str, str] = {}
+        if offset is not None and limit is not None:
+            headers["Range-Unit"] = "items"
+            headers["Range"] = f"{offset}-{offset + limit - 1}"
+
+        resp = self._http.get(
+            f"{self.url}/rest/v1/{table}",
+            params=params,
+            headers=headers,
+        )
         resp.raise_for_status()
         return resp.json()
 

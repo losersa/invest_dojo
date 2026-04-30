@@ -22,14 +22,15 @@ else
 fi
 echo ""
 
-# 2. 最新日志
-echo "【2】最新进度（日志最后一行）"
-LAST=$(tail -c 500 /tmp/seed_fundamentals_v2.log 2>/dev/null | tr '\r' '\n' | grep -E '\[[0-9]+/[0-9]+\]' | tail -1)
+# 2. 最新日志（自动取最近的 v* 日志）
+LATEST_LOG=$(ls -t /tmp/seed_fundamentals*.log 2>/dev/null | head -1)
+echo "【2】最新进度（$LATEST_LOG）"
+LAST=$(tail -c 2000 "$LATEST_LOG" 2>/dev/null | LC_ALL=C tr '\r' '\n' | grep -E '\[[0-9]+/[0-9]+\]' | tail -1)
 if [ -n "$LAST" ]; then
   echo "  $LAST" | sed 's/^[[:space:]]*/  /'
 else
-  echo "  （无匹配日志）"
-  tail -5 /tmp/seed_fundamentals_v2.log 2>/dev/null | sed 's/^/  /'
+  echo "  （无匹配进度行）"
+  tail -5 "$LATEST_LOG" 2>/dev/null | sed 's/^/  /'
 fi
 echo ""
 
