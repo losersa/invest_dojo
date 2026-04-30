@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     minio_region: str = Field(default="us-east-1")
 
     # ── 服务端口 ──
+    data_svc_port: int = Field(default=8000)
     feature_svc_port: int = Field(default=8001)
     train_svc_port: int = Field(default=8002)
     infer_svc_port: int = Field(default=8003)

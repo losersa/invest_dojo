@@ -11,6 +11,7 @@ from common.as_of_enforcer import (
     FutureLeakError,
     check_no_future_leak,
 )
+from common.celery_app import celery_app, create_celery_app
 from common.config import settings
 from common.logging import get_logger, setup_logging
 from common.minio_client import get_minio, minio_health_check
@@ -45,6 +46,9 @@ __all__ = [
     "minio_health_check",
     # app
     "create_app",
+    # celery
+    "celery_app",
+    "create_celery_app",
     # as_of enforcer
     "AsOfContext",
     "DataClientProxy",

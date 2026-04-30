@@ -1,5 +1,7 @@
-feature:  PYTHONPATH=. .venv/bin/uvicorn main:app --app-dir feature-svc  --host 0.0.0.0 --port 8001 --reload --reload-dir feature-svc --reload-dir common
-train:    PYTHONPATH=. .venv/bin/uvicorn main:app --app-dir train-svc    --host 0.0.0.0 --port 8002 --reload --reload-dir train-svc --reload-dir common
-infer:    PYTHONPATH=. .venv/bin/uvicorn main:app --app-dir infer-svc    --host 0.0.0.0 --port 8003 --reload --reload-dir infer-svc --reload-dir common
-backtest: PYTHONPATH=. .venv/bin/uvicorn main:app --app-dir backtest-svc --host 0.0.0.0 --port 8004 --reload --reload-dir backtest-svc --reload-dir common
-monitor:  PYTHONPATH=. .venv/bin/uvicorn main:app --app-dir monitor-svc  --host 0.0.0.0 --port 8005 --reload --reload-dir monitor-svc --reload-dir common
+data:         PYTHONPATH=. .venv/bin/uvicorn main:app --app-dir data-svc     --host 0.0.0.0 --port 8000 --reload --reload-dir data-svc     --reload-dir common
+feature:      PYTHONPATH=. .venv/bin/uvicorn main:app --app-dir feature-svc  --host 0.0.0.0 --port 8001 --reload --reload-dir feature-svc --reload-dir common
+train:        PYTHONPATH=. .venv/bin/uvicorn main:app --app-dir train-svc    --host 0.0.0.0 --port 8002 --reload --reload-dir train-svc --reload-dir common
+train-worker: cd train-svc && PYTHONPATH=.:.. ../.venv/bin/celery -A celery_worker.celery_app worker --loglevel=info --queues=train,default --concurrency=2
+infer:        PYTHONPATH=. .venv/bin/uvicorn main:app --app-dir infer-svc    --host 0.0.0.0 --port 8003 --reload --reload-dir infer-svc --reload-dir common
+backtest:     PYTHONPATH=. .venv/bin/uvicorn main:app --app-dir backtest-svc --host 0.0.0.0 --port 8004 --reload --reload-dir backtest-svc --reload-dir common
+monitor:      PYTHONPATH=. .venv/bin/uvicorn main:app --app-dir monitor-svc  --host 0.0.0.0 --port 8005 --reload --reload-dir monitor-svc --reload-dir common

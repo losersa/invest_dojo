@@ -1,9 +1,18 @@
 """feature-svc 主入口
 
-启动：uvicorn feature-svc.main:app --port 8001
-"""
+启动：uvicorn main:app --app-dir feature-svc --port 8001
 
+职责：
+- 因子库元数据管理（CRUD）
+- 因子值查询（历史触发序列）
+- 因子计算任务调度（Epic 3 完善）
+- 因子组合 / 对比评估（Epic 3 完善）
+
+对应文档：docs/api/02_因子库API.md
+"""
 from common import create_app, get_logger, settings
+
+from routers import factors_router
 
 logger = get_logger("feature-svc")
 
@@ -18,13 +27,18 @@ app = create_app(
 async def root() -> dict:
     return {
         "service": "feature-svc",
-        "message": "骨架就位。具体接口见 Epic 3（T-3.01 起）。",
         "docs": "/docs",
         "health": "/health",
         "port": settings.feature_svc_port,
+        "endpoints": [
+            "/api/v1/factors",
+            "/api/v1/factors/categories",
+            "/api/v1/factors/tags",
+            "/api/v1/factors/{id}",
+            "/api/v1/factors/{id}/history",
+        ],
+        "status": "Epic 2 骨架 · 读接口完整；写 + 计算接口见 Epic 3 (T-3.01+)",
     }
 
 
-# 占位：未来这里会挂载 /api/v1/factors 路由
-# from feature_svc.api import factors_router
-# app.include_router(factors_router, prefix="/api/v1")
+app.include_router(factors_router, prefix="/api/v1", tags=["factors"])
