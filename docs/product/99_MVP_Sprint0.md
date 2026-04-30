@@ -349,29 +349,36 @@ commit + push
   - 抽样核对（茅台 2023 年报 revenue / net_profit）
   - `announce_date` 字段正确（防未来函数关键）
 
-#### T-1.06 · ⚪️ 市场快照采集
-- 预计：1 天
-- 依赖：T-1.02
+#### T-1.06 · 🟢 市场快照采集（已完成 2026-04-30）
+- 实际：~1 小时
+- 依赖：T-1.02, T-1.03（日 K 聚合 advance_decline）
 - 负责：后端
 - 交付物：
-  - `scripts/seed_market_snapshots.py`
-- 验收标准：
-  - 每日快照包含指数/北向/资金流向/板块涨跌前 5
-  - 覆盖 2014-至今
+  - `scripts/seed_market_snapshots.py` —— 全量采集
+  - `scripts/update_market_snapshots.py` —— 每日增量
+  - launchd 任务已合并（每天 19:00 日K + 快照串行）
+- 实际数据量：**2,995 行**，2014-01-02 ~ 2026-04-29（12.3 年）
+- 字段覆盖：
+  - `indexes` 100%（上证/深证/创业板/沪深300/中证500，BaoStock）
+  - `north_capital` 89%（2014-11-17 起，AKShare `stock_hsgt_hist_em`）
+  - `advance_decline` 51%（2020 起，本地日 K 聚合含涨跌停）
+  - `money_flow` / `top_industries` 留 NULL（AKShare 源只有近 120 天，后续再补）
+- 验证：2015-06-12 上证 5166.35 ✅ / 2020-03-23 熔断底 126 跌停 ✅
 
-#### T-1.07 · ⚪️ 数据 API（data-svc）
-- 预计：2 天
+#### T-1.07 · 🟢 数据 API（data-svc，已完成 2026-04-30）
+- 实际：~2 小时
 - 依赖：T-1.01, T-0.02
 - 负责：后端
 - 交付物：
-  - `python-services/data-svc/`（FastAPI）
-  - 实现 API：`GET /klines` `GET /news` `GET /fundamentals` `GET /symbols`
-  - **强制 `as_of` 注入**（所有查询自动 WHERE dt < as_of）
+  - `python-services/data-svc/`（FastAPI，监听 :8000）
+  - 已实现：`/symbols` `/symbols/{code}` `/industries` `/klines` `/klines/latest` `/news` `/fundamentals` `/market/snapshot` `/market/snapshots` `/scenarios` `/scenarios/{id}`
+  - **强制 `as_of` 注入**（K 线按 `dt < as_of`；财报按 `announce_date < as_of`；快照按 `date < as_of`）
 - 验收标准：
-  - 所有接口符合 [数据 API](../api/01_数据API.md) 规范
-  - 单元测试：尝试获取未来数据会抛异常
-  - 分页正确（> 1000 行）
-- 对应文档：[数据 API 完整](../api/01_数据API.md)
+  - ✅ 接口符合 [数据 API](../api/01_数据API.md) 规范（部分扩展见 diff）
+  - ✅ 单元测试 19 个全通过（as_of 注入、时区转换、分页等）
+  - ✅ 分页正确（Range header 驱动，单页上限 1000）
+  - ✅ 端到端验证：as_of=2024-01-04 严格截断未来数据
+  - ✅ 防未来红线：`/market/snapshot?date=X&as_of=X` 直接 403 future_leak
 
 ---
 
@@ -379,73 +386,105 @@ commit + push
 
 目标：把剩下的 Python 服务骨架立起来，形成可扩展的微服务集群。
 
-#### T-2.01 · ⚪️ feature-svc 骨架
-- 预计：1 天
+#### T-2.01 · 🟢 feature-svc 骨架（已完成 2026-04-30）
+- 实际：~1 小时
 - 依赖：T-0.02
 - 负责：后端
 - 交付物：
-  - `python-services/feature-svc/`
-  - 实现 `GET /factors` `GET /factors/{id}`
-  - 预留因子计算接口（后续 Epic 3 实现）
+  - `python-services/feature-svc/`（FastAPI，监听 :8001）
+  - 已实现：`/api/v1/factors` `/factors/categories` `/factors/tags` `/factors/{id}` `/factors/{id}/history`（占位）
+  - `scripts/seed_sample_factors.py` · 5 个示范因子（MA 金叉 / MACD / RSI / 量能突破）
 - 验收标准：
-  - 启动 + /health + /docs 正常
-- 对应文档：[因子库 API](../api/02_因子库API.md)
+  - ✅ 启动 + /health + /docs 正常
+  - ✅ 5 个示范因子已入库
+  - ✅ 14 个单元测试通过（含路由顺序契约）
+  - ✅ 中文 tag 筛选正确（`tags=趋势,经典`）
 
-#### T-2.02 · ⚪️ train-svc 骨架 + Celery
-- 预计：1.5 天
+#### T-2.02 · 🟢 train-svc 骨架 + Celery（已完成 2026-04-30）
+- 实际：~1 小时
 - 依赖：T-0.01, T-0.02
 - 负责：后端
 - 交付物：
-  - `python-services/train-svc/`
-  - Celery worker + beat 配置
-  - 示例任务：空训练任务能完成并写回 DB
+  - `python-services/train-svc/`（FastAPI :8002 + Celery worker）
+  - `common/celery_app.py` · 共享 Celery 配置（broker DB=1 / backend DB=2）
+  - `Procfile` 新增 `train-worker` 条目
+  - 已实现：`POST/GET /api/v1/training/jobs` `DELETE /jobs/{id}` `GET /jobs/{id}`
+  - `dummy_train` 任务：状态 pending→running(prepare→fitting)→completed
 - 验收标准：
-  - 提交任务 → worker 拉取 → 状态更新
-  - `training_jobs` 表状态正确流转
+  - ✅ 提交 → Celery 队列 → worker 拉取 → DB 状态正确流转
+  - ✅ `training_jobs` 表 status/progress/stage/metrics_preview/started_at/completed_at 都正确
+  - ✅ 10 个单测 + 1 个集成测试（eager mode 端到端）通过
+  - ✅ worker 重启不丢任务（acks_late + Redis 持久化）
 
-#### T-2.03 · ⚪️ infer-svc 骨架
-- 预计：1.5 天
+#### T-2.03 · 🟢 infer-svc 骨架（已完成 2026-04-30）
+- 实际：~40 分钟
 - 依赖：T-0.02
 - 负责：后端
 - 交付物：
-  - `python-services/infer-svc/`
-  - 实现 `POST /predict`（先用 mock 模型）
-  - WebSocket `ws/stream`（后续 Epic 6 用）
+  - `python-services/infer-svc/`（FastAPI :8003）
+  - `POST /api/v1/inference/predict` · 单次推理（4 个 mock 模型）
+  - `GET /api/v1/inference/models` · 列出 mock 模型
+  - `WS /ws/v1/inference/stream` · 占位（Epic 6 T-6.03 完善）
+  - `mock_model.py` · 决定性伪推理（hash(model_id+symbol+as_of) 驱动）
 - 验收标准：
-  - `POST /predict` 返回固定格式 Signal
-  - 单元测试：缺 as_of 会拒绝
+  - ✅ `POST /predict` 返回符合 Signal schema 的统一格式
+  - ✅ 缺 as_of → 422（pydantic 必填）
+  - ✅ 空 as_of → 400 MISSING_AS_OF
+  - ✅ 未来 as_of → 403 FUTURE_AS_OF（允许 60 秒 clock skew）
+  - ✅ 决定性：同参数二次调用，除 timestamp/inference_time_ms 外完全一致
+  - ✅ 17 个单测全通过
 
-#### T-2.04 · ⚪️ backtest-svc 骨架
-- 预计：1 天
+#### T-2.04 · 🟢 backtest-svc 骨架（已完成 2026-04-30）
+- 实际：~1 小时
 - 依赖：T-0.02
 - 负责：后端
 - 交付物：
-  - `python-services/backtest-svc/`
-  - 实现 `POST /backtests/run-fast`（mock 结果）
+  - `python-services/backtest-svc/`（FastAPI :8004）
+  - `POST /api/v1/backtests/run-fast` · 快速回测（mock，落库）
+  - `POST /api/v1/backtests/quick-factor` · 单因子快测（不落库）
+  - `GET /api/v1/backtests/{id}` · 详情
+  - `GET /api/v1/backtests` · 列表（分页）
+  - `mock_engine.py` · 决定性伪回测（GBM 日收益 + 多种指标）
 - 验收标准：
-  - 启动 + 接口调通
+  - ✅ 启动 + 接口调通
+  - ✅ 结果符合 `BacktestResult` schema（summary/equity_curve/segment_performance）
+  - ✅ fast 超大范围 → 413 BACKTEST_FAST_MODE_TOO_LARGE
+  - ✅ strategy.type 对应必填校验（type=factor 缺 factor_id → 400）
+  - ✅ 决定性：同 config 二次调用，summary + equity_curve 完全一致
+  - ✅ 17 个单测全通过
 
-#### T-2.05 · ⚪️ monitor-svc 骨架
-- 预计：0.5 天
+#### T-2.05 · 🟢 monitor-svc 骨架（已完成 2026-04-30）
+- 实际：~30 分钟
 - 依赖：T-0.02
 - 负责：后端
 - 交付物：
-  - `python-services/monitor-svc/`
-  - Prometheus metrics endpoint
+  - `python-services/monitor-svc/`（FastAPI :8005）
+  - `/metrics` · Prometheus 指标（common 自动挂载）
+  - `/api/v1/monitor/ping` · 快速探活
+  - `/api/v1/monitor/services` · 并发打 5 个兄弟 svc 的 /health
+  - `/api/v1/monitor/stats` · 12 项业务指标（symbols/factors/backtests 等）
+  - `/api/v1/monitor/overview` · 一锅端（infra + services + stats）
 - 验收标准：
-  - `/metrics` 暴露基础指标
+  - ✅ `/metrics` 暴露 Prometheus 基础指标（Python GC / 请求 counter / 耗时 histogram）
+  - ✅ overview 能准确识别 degraded / down 状态
+  - ✅ services 能识别未启动的 svc 为 down（connect_refused）
+  - ✅ 9 个单测全通过
 
-#### T-2.06 · ⚪️ TypeScript SDK
-- 预计：1.5 天
+#### T-2.06 · 🟢 TypeScript SDK（已完成 2026-04-30）
+- 实际：~1 小时
 - 依赖：T-1.07, T-2.01
 - 负责：前端
 - 交付物：
-  - 扩展 `packages/api/`
-  - 实现 `DataClient` / `FactorClient` / `ModelClient` / `BacktestClient` / `InferenceClient` / `SessionClient`
-  - 每个方法都有 TypeScript 类型
+  - `packages/api/src/types/` · 7 个共享类型文件（data/factor/inference/backtest/training/monitor/common）
+  - `packages/api/src/base-client.ts` · 统一 fetch 封装（timeout / token / ApiError）
+  - `packages/api/src/{data,factor,inference,backtest,train,monitor,session}-client.ts` · 7 个 Client
+  - `createInvestDojoClient()` · 一站式工厂，env 变量可配置 baseURL
+  - `packages/api/src/__smoke__/run-smoke.ts` · 端到端冒烟脚本
 - 验收标准：
-  - 前端 `import { DataClient } from '@investdojo/api'` 可用
-  - 类型定义完整
+  - ✅ `pnpm run type-check` 零错误
+  - ✅ smoke 脚本 7 个场景全绿，含 `monitor.getOverview` / `inference.predict` / `backtests.runFast` 等
+  - ✅ 客户端层防护：缺 as_of 不发请求即抛错
+  - ✅ 前端可 `import { DataClient, createInvestDojoClient } from "@investdojo/api"`
 - 对应文档：[因子库 API §10.1 SDK](../api/02_因子库API.md#10-sdk-示例)
 
 ---

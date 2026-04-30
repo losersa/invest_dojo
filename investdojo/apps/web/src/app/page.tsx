@@ -13,6 +13,9 @@ export default function HomePage() {
           <Link href="/simulation" className="rc-nav-link">历史模拟</Link>
           <span className="text-rc-text-dim cursor-not-allowed text-[16px] tracking-[0.3px]">量化回测</span>
           <span className="text-rc-text-dim cursor-not-allowed text-[16px] tracking-[0.3px]">财报分析</span>
+          <Link href="/sdk-demo" className="rc-nav-link text-[14px] opacity-70 hover:opacity-100">
+            SDK Demo
+          </Link>
         </div>
         <UserNav />
       </nav>

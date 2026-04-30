@@ -58,6 +58,8 @@
   - 场景日K: 2,253 行 / 场景 5m: **108,144 行**（均为真实 BaoStock）
   - symbols: 5,524 行 / industries: 102 行
   - news: 49 行
+  - **market_snapshots: 2,995 行（T-1.06 新增，2014-01-02 ~ 2026-04-29）**
+  - fundamentals: 采集中（T-1.05 后台续跑 PID 97677）
 - 场景约束：`UNIQUE (scenario_id, symbol, timeframe, dt)` + NULL 时用 partial index
 - 每日自动更新：**launchd 每天 19:00 跑增量**
   - 脚本：`investdojo/scripts/update_daily_klines.py`
@@ -72,6 +74,10 @@
 - **坑点 4**：BaoStock 凌晨 23:30~00:30 会维护断连，用多轮断点续传兜底
 - **坑点 5**：Supabase `timestamptz` 存北京时间要转 UTC（04-28 → 04-27T16:00），查 date 必须 `AT TIME ZONE 'Asia/Shanghai'` 转回来
 - **坑点 6**：BaoStock 对 GitHub Actions runner（美国 IP）完全屏蔽，定时任务必须本地跑
+- **坑点 7**：PostgREST JSONB array filter 用 `cs.["a","b"]`（中括号+双引号），不是 `cs.{a,b}`；后者是 PostgreSQL native array 语法。中文要 `json.dumps(ensure_ascii=False)`
+- **坑点 8**：PostgREST 批量 POST 要求所有对象 key 集合完全一致，否则返回 `PGRST102 All object keys must match`。解决：补齐所有字段为 null，或逐条插入
+- **坑点 9**：FastAPI 路由按注册顺序匹配，静态路径必须写在 path parameter 前（`/factors/categories` 要在 `/factors/{id}` 之前声明）
+- **坑点 10**：pytest 跑多个 svc 同名 `common_utils.py` 会因 sys.modules 缓存冲突，用 `importlib.util.spec_from_file_location` 按绝对路径加载 + `sys.modules["common_utils"]` 注入隔离
 
 ## GitHub 仓库
 - URL: `https://github.com/losersa/invest_dojo`（注意：**下划线**，不是无符号）
@@ -102,8 +108,12 @@
   - MinIO Console: `http://localhost:9001`
 - **Python 服务集群**：放在 `investdojo/python-services/`
   - uv 管理 Python 3.12 + 虚拟环境
-  - overmind 并行启动 5 个服务（Procfile）
-  - 服务端口：feature=8001 / train=8002 / infer=8003 / backtest=8004 / monitor=8005
+  - overmind 并行启动 7 个服务（Procfile）
+  - 服务端口：**data=8000** / feature=8001 / train=8002 / infer=8003 / backtest=8004 / monitor=8005
+  - **data-svc 已就位**（T-1.07）：FastAPI + 强制 as_of 注入
+  - **feature-svc 已就位**（T-2.01）：因子库读接口 + 5 个示范因子
+  - **train-svc 已就位**（T-2.02）：FastAPI + Celery worker，dummy_train 任务端到端可用
+  - Celery broker DB=1 / result backend DB=2（复用 Redis）
   - 启动：`cd investdojo/python-services && make dev`
   - 冒烟测试：`make smoke`
   - 单测：`make test`
