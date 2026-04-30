@@ -288,6 +288,7 @@ async def validate_formula(payload: ValidateFormulaRequest = Body(...)):
                 start=start,
                 end=end,
                 extra_days=result.lookback_days,
+                needed_fields=result.fields,
             )
             if not panel:
                 warnings.append("preview: no kline data found for given symbols/dates")
@@ -383,6 +384,7 @@ async def compute_factor(payload: ComputeFactorRequest = Body(...)):
         end=payload.end,
         scenario_id=payload.scenario_id,
         extra_days=parsed.lookback_days,
+        needed_fields=parsed.fields,
     )
     if not panel or "close" not in panel:
         return {

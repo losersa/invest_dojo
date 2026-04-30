@@ -31,8 +31,13 @@ class FunctionSpec:
 
 
 # ── 内置字段（可在 DSL 里裸写 close / high / volume ... ）────
+# 按来源分三组：
+#   K 线字段（日频行情）：open/high/low/close/volume/turnover/amount/preclose/pct_change
+#   基本面字段（季频，用 announce_date 前向填充为日频）：eps_ttm, roe, ...
+#   衍生字段（K 线 + 基本面组合）：pe_ttm, pb, market_cap, total_mv
 BUILTIN_FIELDS: frozenset[str] = frozenset(
     {
+        # K 线
         "open",
         "high",
         "low",
@@ -42,6 +47,89 @@ BUILTIN_FIELDS: frozenset[str] = frozenset(
         "amount",
         "preclose",
         "pct_change",
+        # 基本面（BaoStock 财报 JSONB 展平，季度比率/指标）
+        # profit 表
+        "eps_ttm",  # 滚动 EPS
+        "roe",  # 平均 ROE
+        "gp_margin",  # 毛利率
+        "np_margin",  # 净利率
+        "net_profit",  # 净利润（元）
+        "total_share",  # 总股本
+        "liqa_share",  # 流通 A 股
+        "revenue",  # 主营收入（MBRevenue）
+        # growth 表（同比）
+        "yoy_ni",  # 净利润同比
+        "yoy_pni",  # 归母净利润同比
+        "yoy_asset",  # 总资产同比
+        "yoy_equity",  # 净资产同比
+        "yoy_eps",  # EPS 同比
+        # balance 表
+        "cash_ratio",
+        "quick_ratio",
+        "current_ratio",
+        "yoy_liability",
+        "asset_to_equity",
+        "debt_asset_ratio",  # liabilityToAsset
+        # cashflow 表
+        "cfo_to_gr",  # 经营现金流 / 营业收入
+        "cfo_to_np",  # 经营现金流 / 净利润
+        "cfo_to_or",  # 经营现金流 / 营业收入
+        "ca_to_asset",  # 流动资产占比
+        "nca_to_asset",  # 非流动资产占比
+        # operation 表
+        "asset_turn_ratio",
+        "ca_turn_ratio",
+        "inv_turn_days",
+        "nr_turn_days",
+        # 衍生（由 panel_loader 算出）
+        "market_cap",  # close * total_share（总市值）
+        "pe_ttm",  # close / eps_ttm（市盈率 TTM）
+        "pb",  # 衍生市净率（需要 BPS，这里用 close/eps_ttm×margin 近似 —— 下一版本再完善）
+    }
+)
+
+
+# 基本面字段 → fundamentals.data 的 JSONB key 映射
+# 用于 panel_loader 展平
+FUNDAMENTAL_FIELD_MAP: dict[str, tuple[str, str]] = {
+    # (DSL 字段, (statement, data 里的 key))
+    "eps_ttm": ("profit", "epsTTM"),
+    "roe": ("profit", "roeAvg"),
+    "gp_margin": ("profit", "gpMargin"),
+    "np_margin": ("profit", "npMargin"),
+    "net_profit": ("profit", "netProfit"),
+    "total_share": ("profit", "totalShare"),
+    "liqa_share": ("profit", "liqaShare"),
+    "revenue": ("profit", "MBRevenue"),
+    "yoy_ni": ("growth", "YOYNI"),
+    "yoy_pni": ("growth", "YOYPNI"),
+    "yoy_asset": ("growth", "YOYAsset"),
+    "yoy_equity": ("growth", "YOYEquity"),
+    "yoy_eps": ("growth", "YOYEPSBasic"),
+    "cash_ratio": ("balance", "cashRatio"),
+    "quick_ratio": ("balance", "quickRatio"),
+    "current_ratio": ("balance", "currentRatio"),
+    "yoy_liability": ("balance", "YOYLiability"),
+    "asset_to_equity": ("balance", "assetToEquity"),
+    "debt_asset_ratio": ("balance", "liabilityToAsset"),
+    "cfo_to_gr": ("cashflow", "CFOToGr"),
+    "cfo_to_np": ("cashflow", "CFOToNP"),
+    "cfo_to_or": ("cashflow", "CFOToOR"),
+    "ca_to_asset": ("cashflow", "CAToAsset"),
+    "nca_to_asset": ("cashflow", "NCAToAsset"),
+    "asset_turn_ratio": ("operation", "AssetTurnRatio"),
+    "ca_turn_ratio": ("operation", "CATurnRatio"),
+    "inv_turn_days": ("operation", "INVTurnDays"),
+    "nr_turn_days": ("operation", "NRTurnDays"),
+}
+
+
+# 衍生字段（由 panel_loader 基于 K 线 + 基本面推算）
+DERIVED_FIELDS: frozenset[str] = frozenset(
+    {
+        "market_cap",  # = close × total_share
+        "pe_ttm",  # = close × total_share / (eps_ttm × total_share) = close / eps_ttm
+        "pb",  # = close × total_share / 净资产（近似）
     }
 )
 

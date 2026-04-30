@@ -1,0 +1,341 @@
+---
+# InvestDojo 内置情绪类因子库（T-3.04 part 3）
+#
+# 情绪类因子基于量价关系、换手率、价格结构等推断市场情绪。
+# 不依赖公告/龙虎榜（这些数据源在 Sprint0 里还没接入，后续 Epic 补）。
+
+factors:
+  # ═══════════════════════════════════════════════════════════
+  # 放量 / 缩量 信号（10 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: vol_spike_1_5x
+    name: "放量 1.5 倍"
+    name_en: "Volume Spike 1.5x"
+    tags: ["放量", "异动"]
+    description: "今日成交量是 20 日均量 1.5 倍以上"
+    formula: "volume > MA(volume, 20) * 1.5"
+    output_type: boolean
+
+  - id: vol_spike_5x
+    name: "放量 5 倍（超级异动）"
+    name_en: "Volume Spike 5x"
+    tags: ["放量", "极端"]
+    description: "成交量异常放大 5 倍"
+    formula: "volume > MA(volume, 20) * 5"
+    output_type: boolean
+
+  - id: vol_dry_up
+    name: "极度缩量（< 30% 均量）"
+    name_en: "Volume Dry Up"
+    tags: ["缩量", "冷淡"]
+    description: "成交量不到 20 日均量 30%，交投冷清"
+    formula: "volume < MA(volume, 20) * 0.3"
+    output_type: boolean
+
+  - id: vol_above_5d_ma
+    name: "成交量高于 5 日均量"
+    name_en: "Volume Above 5d MA"
+    tags: ["放量", "短线"]
+    description: "今日成交量超过 5 日均量"
+    formula: "volume > MA(volume, 5)"
+    output_type: boolean
+
+  - id: vol_ma5_above_ma20
+    name: "5 日均量 > 20 日均量"
+    name_en: "Vol MA5 > MA20"
+    tags: ["放量", "趋势"]
+    description: "短期成交量高于长期，关注度上升"
+    formula: "MA(volume, 5) > MA(volume, 20)"
+    output_type: boolean
+
+  - id: vol_ma5_below_ma20
+    name: "5 日均量 < 20 日均量"
+    name_en: "Vol MA5 < MA20"
+    tags: ["缩量", "趋势"]
+    description: "短期成交量低于长期，关注度下降"
+    formula: "MA(volume, 5) < MA(volume, 20)"
+    output_type: boolean
+
+  - id: turnover_high
+    name: "成交额放大（> 5 日均额 1.5 倍）"
+    name_en: "Turnover Spike"
+    tags: ["成交额", "活跃"]
+    description: "成交额显著放大"
+    formula: "turnover > MA(turnover, 5) * 1.5"
+    output_type: boolean
+
+  - id: vol_breakout_up
+    name: "放量突破（价升 + 量增）"
+    name_en: "Volume Breakout Up"
+    tags: ["突破", "情绪", "强势"]
+    description: "创 20 日新高且成交量 1.5x"
+    formula: "close >= MAX(high, 20) AND volume > MA(volume, 20) * 1.5"
+    output_type: boolean
+
+  - id: vol_breakout_down
+    name: "放量破位（价跌 + 量增）"
+    name_en: "Volume Breakdown"
+    tags: ["破位", "情绪", "恐慌"]
+    description: "跌破 20 日新低且放量"
+    formula: "close <= MIN(low, 20) AND volume > MA(volume, 20) * 1.5"
+    output_type: boolean
+
+  - id: vol_rank_top
+    name: "成交量横截面前 10%"
+    name_en: "Volume Rank Top 10%"
+    tags: ["放量", "横截面"]
+    description: "成交量在全市场前 10%"
+    formula: "RANK(volume) > 0.9"
+    output_type: boolean
+
+  # ═══════════════════════════════════════════════════════════
+  # 价格动量 / 情绪强度（10 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: strong_up_day
+    name: "强势上涨日（> 5%）"
+    name_en: "Strong Up Day"
+    tags: ["上涨", "情绪"]
+    description: "单日涨幅超 5%（接近涨停）"
+    formula: "pct_change > 0.05"
+    output_type: boolean
+
+  - id: limit_up_day
+    name: "涨停板（≥ 9.9%）"
+    name_en: "Limit Up"
+    tags: ["涨停", "热点"]
+    description: "单日涨幅接近/达到 10% 涨停"
+    formula: "pct_change >= 0.099"
+    output_type: boolean
+
+  - id: strong_down_day
+    name: "强势下跌日（< -5%）"
+    name_en: "Strong Down Day"
+    tags: ["下跌", "恐慌"]
+    description: "单日跌幅超 5%"
+    formula: "pct_change < -0.05"
+    output_type: boolean
+
+  - id: limit_down_day
+    name: "跌停板（≤ -9.9%）"
+    name_en: "Limit Down"
+    tags: ["跌停", "恐慌"]
+    description: "单日跌幅接近跌停"
+    formula: "pct_change <= -0.099"
+    output_type: boolean
+
+  - id: consecutive_up_3d
+    name: "连续 3 日上涨"
+    name_en: "3 Up Days in a Row"
+    tags: ["连阳", "趋势"]
+    description: "连续 3 天收盘价上涨"
+    formula: "close > preclose AND MIN(close - preclose, 3) > 0"
+    output_type: boolean
+
+  - id: consecutive_down_3d
+    name: "连续 3 日下跌"
+    name_en: "3 Down Days in a Row"
+    tags: ["连阴", "趋势"]
+    description: "连续 3 天收盘价下跌"
+    formula: "close < preclose AND MAX(close - preclose, 3) < 0"
+    output_type: boolean
+
+  - id: pct_change_5d_strong
+    name: "5 日涨幅 > 10%"
+    name_en: "5d Return > 10%"
+    tags: ["短线", "强势"]
+    description: "近 5 日累计涨幅超过 10%"
+    formula: "PCT(close, 5) > 0.1"
+    output_type: boolean
+
+  - id: pct_change_5d_weak
+    name: "5 日跌幅 > 10%"
+    name_en: "5d Return < -10%"
+    tags: ["短线", "弱势"]
+    description: "近 5 日累计跌幅超过 10%"
+    formula: "PCT(close, 5) < -0.1"
+    output_type: boolean
+
+  - id: pct_change_rank_top
+    name: "日涨幅横截面前 5%"
+    name_en: "Return Rank Top 5%"
+    tags: ["涨幅", "横截面"]
+    description: "日涨幅在全市场前 5%"
+    formula: "RANK(pct_change) > 0.95"
+    output_type: boolean
+
+  - id: pct_change_rank_bottom
+    name: "日涨幅横截面后 5%"
+    name_en: "Return Rank Bottom 5%"
+    tags: ["跌幅", "横截面"]
+    description: "日涨幅在全市场后 5%"
+    formula: "RANK(pct_change) < 0.05"
+    output_type: boolean
+
+  # ═══════════════════════════════════════════════════════════
+  # 振幅 / 波动情绪（8 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: amplitude_high_day
+    name: "大振幅日（日内振幅 > 8%）"
+    name_en: "High Amplitude Day"
+    tags: ["振幅", "分歧"]
+    description: "当日最高/最低价振幅超 8%，多空分歧大"
+    formula: "(high - low) / preclose > 0.08"
+    output_type: boolean
+
+  - id: amplitude_tiny_day
+    name: "极小振幅日（< 1%）"
+    name_en: "Tiny Amplitude Day"
+    tags: ["缩量", "分歧"]
+    description: "振幅不到 1%，一致性强但交投冷"
+    formula: "(high - low) / preclose < 0.01"
+    output_type: boolean
+
+  - id: volatility_high_20d
+    name: "20 日高波动（> 3%）"
+    name_en: "High Vol 20d"
+    tags: ["波动率", "风险"]
+    description: "20 日标准化波动率高于 3%"
+    formula: "STD(close, 20) / MA(close, 20) > 0.03"
+    output_type: boolean
+
+  - id: volatility_rising
+    name: "波动率上升（vs 60 日均值）"
+    name_en: "Volatility Rising"
+    tags: ["波动率", "加速"]
+    description: "近 20 日波动高于近 60 日均值"
+    formula: "STD(close, 20) > MA(STD(close, 20), 60)"
+    output_type: boolean
+
+  - id: intraday_strong_close
+    name: "尾盘走强（收盘 > 开盘）"
+    name_en: "Strong Close"
+    tags: ["尾盘", "情绪"]
+    description: "收盘价高于开盘，尾盘情绪强"
+    formula: "close > open"
+    output_type: boolean
+
+  - id: intraday_weak_close
+    name: "尾盘走弱（收盘 < 开盘）"
+    name_en: "Weak Close"
+    tags: ["尾盘", "情绪"]
+    description: "收盘价低于开盘，尾盘情绪弱"
+    formula: "close < open"
+    output_type: boolean
+
+  - id: upper_shadow_long
+    name: "长上影线（高 > 收 + 2 × 体）"
+    name_en: "Long Upper Shadow"
+    tags: ["K 线形态", "分歧"]
+    description: "长上影线，上方抛压重"
+    formula: "(high - close) > 2 * (close - open) AND close > open"
+    output_type: boolean
+
+  - id: lower_shadow_long
+    name: "长下影线（低 < 开 - 2 × 体）"
+    name_en: "Long Lower Shadow"
+    tags: ["K 线形态", "支撑"]
+    description: "长下影线，下方承接强"
+    formula: "(open - low) > 2 * (close - open) AND close > open"
+    output_type: boolean
+
+  # ═══════════════════════════════════════════════════════════
+  # 量价配合（6 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: up_with_volume
+    name: "放量上涨"
+    name_en: "Up with Volume"
+    tags: ["量价", "健康"]
+    description: "上涨且成交量放大"
+    formula: "pct_change > 0 AND volume > MA(volume, 5)"
+    output_type: boolean
+
+  - id: down_with_volume
+    name: "放量下跌（恐慌出货）"
+    name_en: "Down with Volume"
+    tags: ["量价", "恐慌"]
+    description: "下跌伴随放量，恐慌出货"
+    formula: "pct_change < 0 AND volume > MA(volume, 5) * 1.5"
+    output_type: boolean
+
+  - id: up_with_shrink_vol
+    name: "缩量上涨（警示）"
+    name_en: "Up with Shrinking Volume"
+    tags: ["量价", "背离"]
+    description: "上涨但量能萎缩，后续动力不足"
+    formula: "pct_change > 0 AND volume < MA(volume, 5)"
+    output_type: boolean
+
+  - id: down_with_shrink_vol
+    name: "缩量下跌（惜售）"
+    name_en: "Down with Shrinking Volume"
+    tags: ["量价", "惜售"]
+    description: "下跌但量能萎缩，惜售情绪"
+    formula: "pct_change < 0 AND volume < MA(volume, 5) * 0.7"
+    output_type: boolean
+
+  - id: strong_up_with_high_vol
+    name: "强势量价齐升（>3% + 放量 2x）"
+    name_en: "Strong Up + High Volume"
+    tags: ["量价", "强势"]
+    description: "大涨 + 成交量 2 倍"
+    formula: "pct_change > 0.03 AND volume > MA(volume, 20) * 2"
+    output_type: boolean
+
+  - id: panic_sell
+    name: "恐慌抛售（>-3% + 放量 2x）"
+    name_en: "Panic Sell"
+    tags: ["量价", "恐慌"]
+    description: "大跌 + 放量 2 倍，恐慌抛售"
+    formula: "pct_change < -0.03 AND volume > MA(volume, 20) * 2"
+    output_type: boolean
+
+  # ═══════════════════════════════════════════════════════════
+  # 市场相对表现（6 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: momentum_rank_top_10
+    name: "20 日动量横截面前 10%"
+    name_en: "Momentum Rank Top 10%"
+    tags: ["动量", "横截面"]
+    description: "20 日涨幅在全市场前 10%"
+    formula: "RANK(PCT(close, 20)) > 0.9"
+    output_type: boolean
+
+  - id: momentum_rank_bottom_10
+    name: "20 日动量横截面后 10%"
+    name_en: "Momentum Rank Bottom 10%"
+    tags: ["动量", "横截面"]
+    description: "20 日涨幅在全市场后 10%"
+    formula: "RANK(PCT(close, 20)) < 0.1"
+    output_type: boolean
+
+  - id: reversal_1m
+    name: "月度反转（长期跌 + 短期反弹）"
+    name_en: "1-month Reversal"
+    tags: ["反转", "情绪"]
+    description: "20 日跌 + 近 5 日上涨"
+    formula: "PCT(close, 20) < -0.1 AND PCT(close, 5) > 0.03"
+    output_type: boolean
+
+  - id: momentum_continuation
+    name: "动量延续（长短均正）"
+    name_en: "Momentum Continuation"
+    tags: ["动量", "趋势"]
+    description: "20 日和 5 日动量同向为正"
+    formula: "PCT(close, 20) > 0.05 AND PCT(close, 5) > 0"
+    output_type: boolean
+
+  - id: strong_stock_today
+    name: "强势股（涨停 + 放量）"
+    name_en: "Strong Stock Today"
+    tags: ["热点", "情绪"]
+    description: "涨停伴随放量"
+    formula: "pct_change >= 0.099 AND volume > MA(volume, 20) * 1.5"
+    output_type: boolean
+
+  - id: weak_stock_today
+    name: "弱势股（跌停 + 放量）"
+    name_en: "Weak Stock Today"
+    tags: ["恐慌", "情绪"]
+    description: "跌停伴随放量"
+    formula: "pct_change <= -0.099 AND volume > MA(volume, 20) * 1.5"
+    output_type: boolean

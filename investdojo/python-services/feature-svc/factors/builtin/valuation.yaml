@@ -1,0 +1,351 @@
+---
+# InvestDojo 内置估值类因子库（T-3.04 part 1）
+#
+# 所有因子基于 BaoStock 财报季度数据（announce_date 前向填充 + lag1）和日 K 线衍生而来。
+#
+# PE/PB 衍生字段说明：
+#   pe_ttm = close / eps_ttm
+#   pb     ≈ close / (eps_ttm / roe)   —— 近似值，缺 BPS 数据
+#   market_cap = close × total_share × 1e8  —— 总市值（元）
+#
+# **防未来函数保证**：财报公告日 t，在 t+1 交易日起才对因子可见。
+# panel_loader 内部已 +1 天处理。
+
+factors:
+  # ═══════════════════════════════════════════════════════════
+  # PE 相关（10 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: pe_low_20
+    name: "PE_TTM < 20（低估值）"
+    name_en: "Low PE TTM < 20"
+    tags: ["估值", "价值"]
+    description: "PE_TTM 小于 20 倍，估值偏低"
+    formula: "pe_ttm > 0 AND pe_ttm < 20"
+    output_type: boolean
+
+  - id: pe_low_15
+    name: "PE_TTM < 15（深度低估）"
+    name_en: "Low PE TTM < 15"
+    tags: ["估值", "价值", "深度低估"]
+    description: "PE_TTM 小于 15 倍，深度价值区"
+    formula: "pe_ttm > 0 AND pe_ttm < 15"
+    output_type: boolean
+
+  - id: pe_low_10
+    name: "PE_TTM < 10（极低估）"
+    name_en: "Very Low PE TTM < 10"
+    tags: ["估值", "价值", "极端"]
+    description: "PE_TTM 小于 10 倍，极端低估（需警惕价值陷阱）"
+    formula: "pe_ttm > 0 AND pe_ttm < 10"
+    output_type: boolean
+
+  - id: pe_high_50
+    name: "PE_TTM > 50（高估值）"
+    name_en: "High PE TTM > 50"
+    tags: ["估值", "高估", "警示"]
+    description: "PE_TTM 大于 50 倍，高估值区"
+    formula: "pe_ttm > 50"
+    output_type: boolean
+
+  - id: pe_negative
+    name: "PE_TTM 为负（亏损）"
+    name_en: "Negative PE TTM"
+    tags: ["亏损", "风险"]
+    description: "PE_TTM 为负，公司当期亏损"
+    formula: "pe_ttm < 0"
+    output_type: boolean
+
+  - id: pe_percentile_low_20
+    name: "PE 分位低于 20%（历史低位）"
+    name_en: "PE Percentile Low 20%"
+    tags: ["估值", "历史分位"]
+    description: "PE_TTM 在过去 250 日的分位数低于 20%"
+    formula: "pe_ttm < MIN(pe_ttm, 250) + (MAX(pe_ttm, 250) - MIN(pe_ttm, 250)) * 0.2"
+    output_type: boolean
+
+  - id: pe_percentile_high_80
+    name: "PE 分位高于 80%（历史高位）"
+    name_en: "PE Percentile High 80%"
+    tags: ["估值", "历史分位", "警示"]
+    description: "PE_TTM 在过去 250 日的分位数高于 80%"
+    formula: "pe_ttm > MIN(pe_ttm, 250) + (MAX(pe_ttm, 250) - MIN(pe_ttm, 250)) * 0.8"
+    output_type: boolean
+
+  - id: pe_rank_low_cross
+    name: "PE 横截面低估（后 30%）"
+    name_en: "PE Cross-sectional Low"
+    tags: ["估值", "横截面"]
+    description: "PE_TTM 在全市场横截面排名后 30%"
+    formula: "pe_ttm > 0 AND RANK(pe_ttm) < 0.3"
+    output_type: boolean
+
+  - id: pe_ttm_scalar
+    name: "PE_TTM 值（标量）"
+    name_en: "PE TTM Value"
+    tags: ["估值", "标量"]
+    description: "PE_TTM 直接输出"
+    formula: "pe_ttm"
+    output_type: scalar
+
+  - id: pe_reasonable_20_30
+    name: "PE 合理区间 20~30"
+    name_en: "PE Reasonable 20-30"
+    tags: ["估值", "合理"]
+    description: "PE 在 20-30 的合理估值区间"
+    formula: "pe_ttm >= 20 AND pe_ttm <= 30"
+    output_type: boolean
+
+  # ═══════════════════════════════════════════════════════════
+  # PB / 市净率 相关（6 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: pb_low_1
+    name: "PB < 1（破净股）"
+    name_en: "PB below 1"
+    tags: ["估值", "破净"]
+    description: "市净率小于 1，破净（金融股常见）"
+    formula: "pb > 0 AND pb < 1"
+    output_type: boolean
+
+  - id: pb_low_2
+    name: "PB < 2（低市净）"
+    name_en: "PB below 2"
+    tags: ["估值", "低市净"]
+    description: "市净率小于 2，低估值"
+    formula: "pb > 0 AND pb < 2"
+    output_type: boolean
+
+  - id: pb_high_5
+    name: "PB > 5（高市净）"
+    name_en: "PB above 5"
+    tags: ["估值", "高市净"]
+    description: "市净率高于 5，高估值"
+    formula: "pb > 5"
+    output_type: boolean
+
+  - id: pb_percentile_low
+    name: "PB 历史分位 < 20%"
+    name_en: "PB Percentile Low"
+    tags: ["估值", "历史"]
+    description: "PB 在过去 250 日分位 < 20%"
+    formula: "pb < MIN(pb, 250) + (MAX(pb, 250) - MIN(pb, 250)) * 0.2"
+    output_type: boolean
+
+  - id: pb_scalar
+    name: "PB 值（标量）"
+    name_en: "PB Value"
+    tags: ["估值", "标量"]
+    description: "PB 直接输出"
+    formula: "pb"
+    output_type: scalar
+
+  - id: pb_rank_low_cross
+    name: "PB 横截面低估（后 30%）"
+    name_en: "PB Cross-sectional Low"
+    tags: ["估值", "横截面"]
+    description: "PB 在全市场横截面排名后 30%"
+    formula: "pb > 0 AND RANK(pb) < 0.3"
+    output_type: boolean
+
+  # ═══════════════════════════════════════════════════════════
+  # PS / 市销率 近似（pe_ttm × np_margin 反推）（4 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: ps_low_approx
+    name: "PS 近似 < 2（低销值比）"
+    name_en: "Low PS Approximated"
+    tags: ["估值", "销值"]
+    description: "PE × 净利率 ≈ PS，判断销售额估值"
+    formula: "pe_ttm > 0 AND np_margin > 0 AND pe_ttm * np_margin < 2"
+    output_type: boolean
+
+  - id: ps_high_approx
+    name: "PS 近似 > 10（高销值比）"
+    name_en: "High PS Approximated"
+    tags: ["估值", "销值"]
+    description: "PE × 净利率 ≈ PS，高销售额估值"
+    formula: "pe_ttm * np_margin > 10"
+    output_type: boolean
+
+  - id: ps_reasonable
+    name: "PS 近似合理 2~5"
+    name_en: "Reasonable PS"
+    tags: ["估值", "销值"]
+    description: "PS 近似在 2-5 的合理区间"
+    formula: "pe_ttm * np_margin >= 2 AND pe_ttm * np_margin <= 5"
+    output_type: boolean
+
+  - id: ps_scalar
+    name: "PS 近似值（标量）"
+    name_en: "PS Approximated"
+    tags: ["估值", "标量"]
+    description: "PE × 净利率，近似 PS"
+    formula: "pe_ttm * np_margin"
+    output_type: scalar
+
+  # ═══════════════════════════════════════════════════════════
+  # 市值相关（6 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: large_cap_100b
+    name: "大盘股（市值 > 1000 亿）"
+    name_en: "Large Cap > 100B"
+    tags: ["市值", "大盘"]
+    description: "总市值大于 1000 亿"
+    formula: "market_cap > 100000000000"
+    output_type: boolean
+
+  - id: mid_cap
+    name: "中盘股（100-1000 亿）"
+    name_en: "Mid Cap 10-100B"
+    tags: ["市值", "中盘"]
+    description: "总市值 100-1000 亿"
+    formula: "market_cap >= 10000000000 AND market_cap <= 100000000000"
+    output_type: boolean
+
+  - id: small_cap_10b
+    name: "小盘股（市值 < 100 亿）"
+    name_en: "Small Cap < 10B"
+    tags: ["市值", "小盘"]
+    description: "总市值小于 100 亿"
+    formula: "market_cap < 10000000000"
+    output_type: boolean
+
+  - id: micro_cap_3b
+    name: "微盘股（市值 < 30 亿）"
+    name_en: "Micro Cap < 3B"
+    tags: ["市值", "微盘"]
+    description: "总市值小于 30 亿"
+    formula: "market_cap < 3000000000"
+    output_type: boolean
+
+  - id: market_cap_rank_top_10
+    name: "市值榜前 10%"
+    name_en: "Top 10% by Market Cap"
+    tags: ["市值", "龙头"]
+    description: "全市场市值排名前 10%"
+    formula: "RANK(market_cap) > 0.9"
+    output_type: boolean
+
+  - id: market_cap_scalar
+    name: "总市值（元，标量）"
+    name_en: "Market Cap (CNY)"
+    tags: ["市值", "标量"]
+    description: "总市值，单位元"
+    formula: "market_cap"
+    output_type: scalar
+
+  # ═══════════════════════════════════════════════════════════
+  # 盈利能力（pe_ttm 反映的利润）（4 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: earnings_yield_high
+    name: "盈利收益率 > 10%（PE 倒数）"
+    name_en: "High Earnings Yield > 10%"
+    tags: ["价值", "收益率"]
+    description: "1/PE > 10%，盈利收益率高"
+    formula: "pe_ttm > 0 AND pe_ttm < 10"
+    output_type: boolean
+
+  - id: earnings_yield_above_bond
+    name: "盈利收益率 > 5%（跑赢债）"
+    name_en: "Earnings Yield > Bond Yield"
+    tags: ["价值", "资产配置"]
+    description: "1/PE > 5%，跑赢无风险收益率"
+    formula: "pe_ttm > 0 AND pe_ttm < 20"
+    output_type: boolean
+
+  - id: peg_value_growth
+    name: "PEG < 1（价值+成长）"
+    name_en: "PEG < 1 Value Growth"
+    tags: ["估值", "价值", "成长"]
+    description: "PE / 净利润同比增速 < 1，经典 PEG 选股"
+    formula: "pe_ttm > 0 AND yoy_ni > 0 AND pe_ttm / (yoy_ni * 100) < 1"
+    output_type: boolean
+
+  - id: peg_scalar
+    name: "PEG（标量）"
+    name_en: "PEG Value"
+    tags: ["估值", "标量"]
+    description: "PE / 净利润同比增速（百分数形式）"
+    formula: "pe_ttm / (yoy_ni * 100)"
+    output_type: scalar
+
+  # ═══════════════════════════════════════════════════════════
+  # 综合估值筛选（10 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: deep_value
+    name: "深度价值（PE<15 + PB<2 + ROE>10%）"
+    name_en: "Deep Value Screen"
+    tags: ["价值", "综合", "经典"]
+    description: "低 PE + 低 PB + 高 ROE"
+    formula: "pe_ttm > 0 AND pe_ttm < 15 AND pb > 0 AND pb < 2 AND roe > 0.1"
+    output_type: boolean
+
+  - id: gordon_growth
+    name: "戈登增长模型（ROE > PE 的倒数 2 倍）"
+    name_en: "Gordon Growth Model"
+    tags: ["价值", "增长"]
+    description: "盈利能力 × 增速跑赢估值"
+    formula: "roe > 0.2 AND pe_ttm > 0 AND pe_ttm < 25"
+    output_type: boolean
+
+  - id: quality_growth
+    name: "质量成长（ROE>15% + 净利增速>20%）"
+    name_en: "Quality Growth"
+    tags: ["成长", "质量"]
+    description: "高 ROE + 高增速"
+    formula: "roe > 0.15 AND yoy_ni > 0.2"
+    output_type: boolean
+
+  - id: defensive_low_pe_high_margin
+    name: "防守型（低 PE + 高净利率）"
+    name_en: "Defensive Low PE High Margin"
+    tags: ["防御", "稳健"]
+    description: "低估值 + 高利润率，防守型组合"
+    formula: "pe_ttm > 0 AND pe_ttm < 20 AND np_margin > 0.15"
+    output_type: boolean
+
+  - id: gem_undervalued
+    name: "隐藏宝藏（低 PE + 高 ROE + 低负债）"
+    name_en: "Hidden Gem"
+    tags: ["价值", "质量", "安全"]
+    description: "低估值 + 高资产回报 + 低负债率"
+    formula: "pe_ttm > 0 AND pe_ttm < 20 AND roe > 0.15 AND debt_asset_ratio < 0.5"
+    output_type: boolean
+
+  - id: expensive_growth
+    name: "昂贵成长（高 PE 但 ROE 不高）"
+    name_en: "Expensive Growth Warning"
+    tags: ["警示", "泡沫"]
+    description: "高 PE 但 ROE 不匹配，泡沫风险"
+    formula: "pe_ttm > 50 AND roe < 0.1"
+    output_type: boolean
+
+  - id: turnaround_candidate
+    name: "困境反转（PE<0 转>0 + PE 下降）"
+    name_en: "Turnaround Candidate"
+    tags: ["反转", "机会"]
+    description: "从亏损转盈利且估值合理"
+    formula: "pe_ttm > 0 AND pe_ttm < 30 AND DIFF(pe_ttm, 60) < -10"
+    output_type: boolean
+
+  - id: value_trap_warning
+    name: "价值陷阱（低 PE + 净利下滑）"
+    name_en: "Value Trap Warning"
+    tags: ["警示", "陷阱"]
+    description: "看似低估但基本面恶化"
+    formula: "pe_ttm > 0 AND pe_ttm < 10 AND yoy_ni < -0.2"
+    output_type: boolean
+
+  - id: dividend_safe_proxy
+    name: "高分红代理（低 PE + 盈利稳定）"
+    name_en: "Dividend Safe Proxy"
+    tags: ["分红", "稳定"]
+    description: "低估值 + 正向盈利代理的分红潜力"
+    formula: "pe_ttm > 0 AND pe_ttm < 15 AND roe > 0.1 AND debt_asset_ratio < 0.6"
+    output_type: boolean
+
+  - id: value_momentum_combo
+    name: "价值 + 动量"
+    name_en: "Value + Momentum"
+    tags: ["价值", "动量", "组合"]
+    description: "低估值 + 最近 60 日正向动量"
+    formula: "pe_ttm > 0 AND pe_ttm < 20 AND PCT(close, 60) > 0"
+    output_type: boolean

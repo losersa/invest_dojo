@@ -1,0 +1,346 @@
+---
+# InvestDojo 内置成长类因子库（T-3.04 part 2）
+#
+# 覆盖：营收/净利/EPS 同比增长、盈利能力、ROE/毛利率趋势等
+
+factors:
+  # ═══════════════════════════════════════════════════════════
+  # 净利润增长（10 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: yoy_ni_positive
+    name: "净利润同比增长为正"
+    name_en: "YOY NI Positive"
+    tags: ["成长", "盈利"]
+    description: "净利润同比增长 > 0"
+    formula: "yoy_ni > 0"
+    output_type: boolean
+
+  - id: yoy_ni_high_20
+    name: "净利润增速 > 20%"
+    name_en: "YOY NI > 20%"
+    tags: ["成长", "高增速"]
+    description: "净利润同比增速大于 20%"
+    formula: "yoy_ni > 0.2"
+    output_type: boolean
+
+  - id: yoy_ni_high_50
+    name: "净利润增速 > 50%（爆发）"
+    name_en: "YOY NI > 50%"
+    tags: ["成长", "爆发"]
+    description: "净利润同比增速大于 50%"
+    formula: "yoy_ni > 0.5"
+    output_type: boolean
+
+  - id: yoy_ni_decline
+    name: "净利润同比下滑"
+    name_en: "YOY NI Declining"
+    tags: ["衰退", "警示"]
+    description: "净利润同比为负"
+    formula: "yoy_ni < 0"
+    output_type: boolean
+
+  - id: yoy_ni_severe_decline
+    name: "净利润同比 < -30%（严重下滑）"
+    name_en: "YOY NI Severe Decline"
+    tags: ["衰退", "风险"]
+    description: "净利润同比下滑超过 30%"
+    formula: "yoy_ni < -0.3"
+    output_type: boolean
+
+  - id: yoy_pni_positive
+    name: "归母净利润同比为正"
+    name_en: "YOY PNI Positive"
+    tags: ["成长", "归母"]
+    description: "归母净利润同比增长"
+    formula: "yoy_pni > 0"
+    output_type: boolean
+
+  - id: yoy_pni_high_20
+    name: "归母净利增速 > 20%"
+    name_en: "YOY PNI > 20%"
+    tags: ["成长", "归母", "高增速"]
+    description: "归母净利润增速 > 20%"
+    formula: "yoy_pni > 0.2"
+    output_type: boolean
+
+  - id: yoy_ni_scalar
+    name: "净利润同比（标量）"
+    name_en: "YOY NI Value"
+    tags: ["成长", "标量"]
+    description: "净利润同比增速，小数形式"
+    formula: "yoy_ni"
+    output_type: scalar
+
+  - id: yoy_pni_scalar
+    name: "归母净利同比（标量）"
+    name_en: "YOY PNI Value"
+    tags: ["成长", "归母", "标量"]
+    description: "归母净利润同比增速"
+    formula: "yoy_pni"
+    output_type: scalar
+
+  - id: yoy_ni_rank_top_20
+    name: "净利润增速横截面前 20%"
+    name_en: "YOY NI Cross-section Top 20%"
+    tags: ["成长", "横截面"]
+    description: "净利润增速在全市场前 20%"
+    formula: "RANK(yoy_ni) > 0.8"
+    output_type: boolean
+
+  # ═══════════════════════════════════════════════════════════
+  # 资产/股东权益增长（6 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: yoy_asset_positive
+    name: "总资产同比正增长"
+    name_en: "YOY Asset Positive"
+    tags: ["资产", "扩张"]
+    description: "总资产同比增长为正"
+    formula: "yoy_asset > 0"
+    output_type: boolean
+
+  - id: yoy_asset_high
+    name: "总资产增速 > 15%"
+    name_en: "YOY Asset > 15%"
+    tags: ["资产", "扩张"]
+    description: "总资产同比增速大于 15%"
+    formula: "yoy_asset > 0.15"
+    output_type: boolean
+
+  - id: yoy_equity_positive
+    name: "净资产同比为正"
+    name_en: "YOY Equity Positive"
+    tags: ["股东权益", "积累"]
+    description: "股东权益同比增长"
+    formula: "yoy_equity > 0"
+    output_type: boolean
+
+  - id: yoy_equity_high
+    name: "净资产增速 > 15%"
+    name_en: "YOY Equity > 15%"
+    tags: ["股东权益", "高增长"]
+    description: "股东权益增速大于 15%"
+    formula: "yoy_equity > 0.15"
+    output_type: boolean
+
+  - id: yoy_liability_controlled
+    name: "负债同比 < 资产同比（良性扩张）"
+    name_en: "Liability Growth Controlled"
+    tags: ["负债", "健康"]
+    description: "负债增速低于资产增速，杠杆控制良好"
+    formula: "yoy_liability < yoy_asset"
+    output_type: boolean
+
+  - id: yoy_liability_high
+    name: "负债同比 > 30%（警惕）"
+    name_en: "YOY Liability > 30%"
+    tags: ["负债", "警示"]
+    description: "负债增速过快，加杠杆风险"
+    formula: "yoy_liability > 0.3"
+    output_type: boolean
+
+  # ═══════════════════════════════════════════════════════════
+  # EPS 增长（4 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: yoy_eps_positive
+    name: "EPS 同比为正"
+    name_en: "YOY EPS Positive"
+    tags: ["EPS", "成长"]
+    description: "EPS 同比增长为正"
+    formula: "yoy_eps > 0"
+    output_type: boolean
+
+  - id: yoy_eps_high_20
+    name: "EPS 增速 > 20%"
+    name_en: "YOY EPS > 20%"
+    tags: ["EPS", "高增速"]
+    description: "EPS 同比增速大于 20%"
+    formula: "yoy_eps > 0.2"
+    output_type: boolean
+
+  - id: yoy_eps_scalar
+    name: "EPS 同比（标量）"
+    name_en: "YOY EPS Value"
+    tags: ["EPS", "标量"]
+    description: "EPS 同比增速"
+    formula: "yoy_eps"
+    output_type: scalar
+
+  - id: eps_ttm_positive
+    name: "EPS_TTM > 0（盈利）"
+    name_en: "EPS TTM Positive"
+    tags: ["盈利"]
+    description: "滚动 EPS 为正，公司盈利"
+    formula: "eps_ttm > 0"
+    output_type: boolean
+
+  # ═══════════════════════════════════════════════════════════
+  # ROE / 盈利能力（8 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: roe_high_15
+    name: "ROE > 15%（高质量）"
+    name_en: "ROE > 15%"
+    tags: ["ROE", "质量"]
+    description: "平均 ROE 大于 15%，优秀盈利能力"
+    formula: "roe > 0.15"
+    output_type: boolean
+
+  - id: roe_high_20
+    name: "ROE > 20%（卓越）"
+    name_en: "ROE > 20%"
+    tags: ["ROE", "卓越"]
+    description: "ROE 大于 20%，卓越盈利能力"
+    formula: "roe > 0.2"
+    output_type: boolean
+
+  - id: roe_low_5
+    name: "ROE < 5%（低效）"
+    name_en: "ROE < 5%"
+    tags: ["ROE", "低效"]
+    description: "ROE 小于 5%，资本效率不足"
+    formula: "roe < 0.05"
+    output_type: boolean
+
+  - id: roe_scalar
+    name: "ROE（标量）"
+    name_en: "ROE Value"
+    tags: ["ROE", "标量"]
+    description: "平均 ROE，小数形式"
+    formula: "roe"
+    output_type: scalar
+
+  - id: gp_margin_high
+    name: "毛利率 > 30%"
+    name_en: "GP Margin > 30%"
+    tags: ["毛利率"]
+    description: "毛利率大于 30%，护城河较深"
+    formula: "gp_margin > 0.3"
+    output_type: boolean
+
+  - id: np_margin_high
+    name: "净利率 > 15%"
+    name_en: "NP Margin > 15%"
+    tags: ["净利率"]
+    description: "净利率大于 15%"
+    formula: "np_margin > 0.15"
+    output_type: boolean
+
+  - id: gp_margin_scalar
+    name: "毛利率（标量）"
+    name_en: "GP Margin Value"
+    tags: ["毛利率", "标量"]
+    description: "毛利率小数"
+    formula: "gp_margin"
+    output_type: scalar
+
+  - id: np_margin_scalar
+    name: "净利率（标量）"
+    name_en: "NP Margin Value"
+    tags: ["净利率", "标量"]
+    description: "净利率小数"
+    formula: "np_margin"
+    output_type: scalar
+
+  # ═══════════════════════════════════════════════════════════
+  # 运营效率 / 资产周转（4 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: asset_turn_high
+    name: "总资产周转率 > 1（高效）"
+    name_en: "Asset Turnover > 1"
+    tags: ["运营", "效率"]
+    description: "总资产周转率大于 1 次"
+    formula: "asset_turn_ratio > 1"
+    output_type: boolean
+
+  - id: ca_turn_high
+    name: "流动资产周转 > 2"
+    name_en: "CA Turnover > 2"
+    tags: ["运营", "流动资产"]
+    description: "流动资产周转率大于 2"
+    formula: "ca_turn_ratio > 2"
+    output_type: boolean
+
+  - id: inv_days_low
+    name: "存货周转天数 < 60（快周转）"
+    name_en: "Inv Days < 60"
+    tags: ["存货", "运营"]
+    description: "存货周转天数小于 60 天"
+    formula: "inv_turn_days < 60"
+    output_type: boolean
+
+  - id: inv_days_high
+    name: "存货周转天数 > 180（慢周转警示）"
+    name_en: "Inv Days > 180"
+    tags: ["存货", "警示"]
+    description: "存货周转天数大于 180 天"
+    formula: "inv_turn_days > 180"
+    output_type: boolean
+
+  # ═══════════════════════════════════════════════════════════
+  # 现金流质量（4 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: cfo_to_np_high
+    name: "经营现金流 / 净利润 > 1（现金含金量高）"
+    name_en: "CFO/NP > 1"
+    tags: ["现金流", "质量"]
+    description: "经营现金流覆盖净利润，盈利含金量高"
+    formula: "cfo_to_np > 1"
+    output_type: boolean
+
+  - id: cfo_to_np_low
+    name: "经营现金流 / 净利润 < 0.5（警示）"
+    name_en: "CFO/NP < 0.5"
+    tags: ["现金流", "警示"]
+    description: "盈利质量差，现金流远低于账面净利润"
+    formula: "cfo_to_np < 0.5 AND cfo_to_np > 0"
+    output_type: boolean
+
+  - id: cfo_to_gr_healthy
+    name: "经营现金流 / 营收 > 10%"
+    name_en: "CFO/GR > 10%"
+    tags: ["现金流", "健康"]
+    description: "经营现金流占营业收入 > 10%"
+    formula: "cfo_to_gr > 0.1"
+    output_type: boolean
+
+  - id: cfo_to_or_scalar
+    name: "经营现金流 / 营收（标量）"
+    name_en: "CFO/OR Value"
+    tags: ["现金流", "标量"]
+    description: "经营现金流占比"
+    formula: "cfo_to_or"
+    output_type: scalar
+
+  # ═══════════════════════════════════════════════════════════
+  # 综合成长筛选（4 个）
+  # ═══════════════════════════════════════════════════════════
+  - id: all_around_growth
+    name: "全面成长（营收+净利+EPS 同比皆 > 20%）"
+    name_en: "All-round Growth"
+    tags: ["成长", "综合", "优秀"]
+    description: "营收、净利、EPS 同比均超 20%"
+    formula: "yoy_ni > 0.2 AND yoy_eps > 0.2 AND yoy_asset > 0"
+    output_type: boolean
+
+  - id: quality_compound_growth
+    name: "质量复合增长（高 ROE + 高增速）"
+    name_en: "Quality Compound Growth"
+    tags: ["质量", "成长"]
+    description: "ROE > 15% 且净利增速 > 20%"
+    formula: "roe > 0.15 AND yoy_ni > 0.2"
+    output_type: boolean
+
+  - id: margin_expanding
+    name: "利润率扩张（净利率高+毛利率高）"
+    name_en: "Margin Expanding"
+    tags: ["利润率", "护城河"]
+    description: "高毛利率 + 高净利率，护城河显著"
+    formula: "gp_margin > 0.3 AND np_margin > 0.15"
+    output_type: boolean
+
+  - id: steady_compounder
+    name: "稳健复利（ROE+增速+现金流三优）"
+    name_en: "Steady Compounder"
+    tags: ["复利", "稳健"]
+    description: "高 ROE + 正增速 + 好现金流"
+    formula: "roe > 0.15 AND yoy_ni > 0.1 AND cfo_to_np > 1"
+    output_type: boolean

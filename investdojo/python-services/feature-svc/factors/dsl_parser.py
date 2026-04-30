@@ -383,6 +383,28 @@ class ParseResult:
     ast: Node
     output_type: str
     lookback_days: int
+    fields: set[str]  # 引用到的内置字段（panel_loader 按需加载）
+
+
+def collect_fields(node: Node) -> set[str]:
+    """递归收集 AST 里引用的内置字段名（close/eps_ttm/...）"""
+    if node.type == "field":
+        return {node.name}
+    if node.type == "call":
+        fs: set[str] = set()
+        # 技术指标函数隐式使用 close/high/low
+        if node.name == "RSI" or node.name == "MACD":
+            fs.add("close")
+        if node.name == "KDJ":
+            fs.update({"high", "low", "close"})
+        for a in node.args:
+            fs |= collect_fields(a)
+        return fs
+    if node.type == "binop":
+        return collect_fields(node.left) | collect_fields(node.right)
+    if node.type == "unary":
+        return collect_fields(node.operand)
+    return set()
 
 
 def parse_formula(src: str) -> ParseResult:
@@ -401,4 +423,5 @@ def parse_formula(src: str) -> ParseResult:
         ast=node,
         output_type=infer_output_type(node),
         lookback_days=infer_lookback(node),
+        fields=collect_fields(node),
     )
