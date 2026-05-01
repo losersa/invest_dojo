@@ -2,12 +2,16 @@
 
 MVP（T-2.01）：读接口完整
 Epic 3（T-3.01+）：写接口、计算接口
+Epic 3（T-3.06）：补 POST/PUT/DELETE/batch-query/compare/publish/history 真实查
 
 ⚠️ 注意：FastAPI 按路由声明顺序匹配。`/factors/categories` / `/factors/tags` / `/factors/validate`
 必须写在 `/factors/{factor_id}` 之前，否则会被 path parameter 吞掉。
 """
 
 from __future__ import annotations
+
+from datetime import datetime
+from uuid import uuid4
 
 from common_utils import (
     CATEGORY_LABELS,
@@ -22,7 +26,7 @@ from common_utils import (
 from factors import DSLError, UnknownFunctionError, dump_ast, eval_ast, parse_formula
 from factors.engine import EngineError
 from factors.panel_loader import load_panel
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, Header, Query
 from pydantic import BaseModel, Field
 
 from common import get_logger
@@ -443,7 +447,653 @@ async def compute_factor(payload: ComputeFactorRequest = Body(...)):
     }
 
 
-# ─── /factors/{factor_id} 必须放在所有静态路径之后 ────────
+# ═══════════════════════════════════════════════════════════════
+# T-3.06 · 因子 CRUD（POST / PUT / DELETE）
+# ═══════════════════════════════════════════════════════════════
+
+
+def _get_user_id(x_user_id: str | None) -> str:
+    """MVP：从 header 读 user_id；生产应接 Supabase Auth JWT"""
+    return x_user_id or "anon"
+
+
+def _gen_custom_factor_id(name: str, user_id: str) -> str:
+    """生成自定义因子 id：custom_{user}_{short_uuid}"""
+    return f"custom_{user_id[:8]}_{uuid4().hex[:8]}"
+
+
+class FactorCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    name_en: str | None = None
+    description: str | None = None
+    long_description: str | None = None
+    category: str = Field("custom")
+    tags: list[str] = Field(default_factory=list)
+    formula: str = Field(..., min_length=1)
+    formula_type: str = Field("dsl", pattern="^(dsl|python)$")
+    output_type: str | None = Field(None, pattern="^(boolean|scalar|rank)$")
+    output_range: list[float] | None = None
+    lookback_days: int | None = None
+    update_frequency: str = Field("daily", pattern="^(daily|realtime|hourly)$")
+    visibility: str = Field("private", pattern="^(public|private|unlisted)$")
+
+
+class FactorUpdateRequest(BaseModel):
+    """PUT 所有字段可选"""
+
+    name: str | None = None
+    name_en: str | None = None
+    description: str | None = None
+    long_description: str | None = None
+    tags: list[str] | None = None
+    formula: str | None = None
+    formula_type: str | None = Field(None, pattern="^(dsl|python)$")
+    output_type: str | None = Field(None, pattern="^(boolean|scalar|rank)$")
+    output_range: list[float] | None = None
+    lookback_days: int | None = None
+    visibility: str | None = Field(None, pattern="^(public|private|unlisted)$")
+
+
+def _infer_from_formula(formula: str, formula_type: str) -> tuple[str, int, dict | None]:
+    """解析公式拿到 output_type / lookback / ast（python 类型跳过）
+
+    返回 (output_type, lookback_days, parsed_ast_dict or None)
+    """
+    if formula_type != "dsl":
+        return "scalar", 0, None
+    try:
+        r = parse_formula(formula)
+    except (DSLError, UnknownFunctionError) as e:
+        raise api_error(
+            e.code if e.code in ("UNKNOWN_FUNCTION",) else ErrorCode.INVALID_FORMULA,
+            e.message,
+            status=422,
+            **e.to_detail(),
+        ) from e
+    return r.output_type, r.lookback_days, dump_ast(r.ast)
+
+
+@router.post("/factors", status_code=201, summary="新建自定义因子")
+async def create_factor(
+    payload: FactorCreateRequest = Body(...),
+    x_user_id: str | None = Header(None, alias="X-User-Id"),
+):
+    """创建一个自定义因子（owner != platform）
+
+    - 公式必须解析通过（INVALID_FORMULA / UNKNOWN_FUNCTION）
+    - category 非法 → 400
+    - 同 owner 同 name 重复 → 409 FACTOR_NAME_DUPLICATE
+    - 未指定 output_type / lookback_days 时从 AST 推断
+    """
+    if payload.category not in VALID_CATEGORIES:
+        raise api_error(
+            ErrorCode.INVALID_PARAM,
+            f"Invalid category: {payload.category!r}. Valid: {sorted(VALID_CATEGORIES)}",
+        )
+
+    owner = _get_user_id(x_user_id)
+
+    # 重名检查（同 owner 下）
+    client = get_supabase_client()
+    dups = client.select(
+        "factor_definitions",
+        columns="id",
+        filters={"owner": f"eq.{owner}", "name": f"eq.{payload.name}"},
+        limit=1,
+    )
+    if dups:
+        raise api_error(
+            ErrorCode.FACTOR_NAME_DUPLICATE,
+            f"You already have a factor named {payload.name!r}",
+            status=409,
+        )
+
+    # 推断
+    inferred_output, inferred_lookback, _ast = _infer_from_formula(
+        payload.formula, payload.formula_type
+    )
+    output_type = payload.output_type or inferred_output
+    lookback = payload.lookback_days if payload.lookback_days is not None else inferred_lookback
+
+    factor_id = _gen_custom_factor_id(payload.name, owner)
+    row = {
+        "id": factor_id,
+        "name": payload.name,
+        "name_en": payload.name_en,
+        "description": payload.description or "",
+        "long_description": payload.long_description,
+        "category": payload.category,
+        "tags": payload.tags,
+        "formula": payload.formula,
+        "formula_type": payload.formula_type,
+        "output_type": output_type,
+        "output_range": payload.output_range,
+        "lookback_days": lookback,
+        "update_frequency": payload.update_frequency,
+        "version": 1,
+        "owner": owner,
+        "visibility": payload.visibility,
+    }
+    try:
+        inserted = client.insert("factor_definitions", [row])
+    except Exception as e:  # noqa: BLE001
+        logger.exception("factor.create.db_failed", user=owner, name=payload.name)
+        raise api_error("DB_ERROR", f"Failed to insert factor: {e}", status=500) from e
+
+    return {"data": _factor_row_to_api(inserted[0] if inserted else row)}
+
+
+@router.put("/factors/{factor_id}", summary="更新自定义因子")
+async def update_factor(
+    factor_id: str,
+    payload: FactorUpdateRequest = Body(...),
+    x_user_id: str | None = Header(None, alias="X-User-Id"),
+):
+    """更新：只有 owner 可改；platform 因子拒绝。
+    如果改了 formula，自动重新推断 output_type / lookback_days。
+    """
+    client = get_supabase_client()
+    existing = client.select(
+        "factor_definitions",
+        filters={"id": f"eq.{factor_id}"},
+        limit=1,
+    )
+    if not existing:
+        raise api_error(
+            ErrorCode.FACTOR_NOT_FOUND,
+            f"Factor {factor_id!r} not found",
+            status=404,
+            factor_id=factor_id,
+        )
+    row = existing[0]
+    if row["owner"] == "platform":
+        raise api_error(
+            ErrorCode.FACTOR_PERMISSION_DENIED,
+            "Platform factors are not editable",
+            status=403,
+        )
+    user = _get_user_id(x_user_id)
+    if row["owner"] != user:
+        raise api_error(
+            ErrorCode.FACTOR_PERMISSION_DENIED,
+            "Only the owner can update this factor",
+            status=403,
+        )
+
+    patch: dict = {}
+    for field in (
+        "name",
+        "name_en",
+        "description",
+        "long_description",
+        "tags",
+        "output_range",
+        "update_frequency",
+        "visibility",
+    ):
+        val = getattr(payload, field, None)
+        if val is not None:
+            patch[field] = val
+
+    # 改公式：重新推断 + version +1
+    if payload.formula and payload.formula != row.get("formula"):
+        formula_type = payload.formula_type or row.get("formula_type", "dsl")
+        out, lb, _ = _infer_from_formula(payload.formula, formula_type)
+        patch["formula"] = payload.formula
+        patch["formula_type"] = formula_type
+        patch["output_type"] = payload.output_type or out
+        patch["lookback_days"] = payload.lookback_days if payload.lookback_days is not None else lb
+        patch["version"] = int(row.get("version") or 1) + 1
+    else:
+        # 只显式设了 output_type / lookback 也能改
+        if payload.output_type is not None:
+            patch["output_type"] = payload.output_type
+        if payload.lookback_days is not None:
+            patch["lookback_days"] = payload.lookback_days
+
+    if not patch:
+        return {"data": _factor_row_to_api(row)}
+
+    patch["updated_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+    import httpx as _httpx  # noqa: PLC0415
+
+    url = f"{client.url}/rest/v1/factor_definitions?id=eq.{factor_id}"
+    resp = client._http.patch(url, json=patch, headers={"Prefer": "return=representation"})
+    try:
+        resp.raise_for_status()
+    except _httpx.HTTPStatusError as e:
+        logger.error("factor.update.db_failed", factor_id=factor_id, body=resp.text[:200])
+        raise api_error("DB_ERROR", f"Update failed: {e}", status=500) from e
+    updated_rows = resp.json()
+    if not updated_rows:
+        raise api_error(ErrorCode.FACTOR_NOT_FOUND, "After update, row not found", status=404)
+    return {"data": _factor_row_to_api(updated_rows[0])}
+
+
+@router.delete("/factors/{factor_id}", status_code=204, summary="删除自定义因子")
+async def delete_factor(
+    factor_id: str,
+    x_user_id: str | None = Header(None, alias="X-User-Id"),
+):
+    """删除：owner 可删；platform 不可删；被引用时 409。
+
+    MVP：暂不检查"被模型训练用过"（model_factors 关联表 Epic 3 后续加）。
+    但至少检查 feature_values 是否已有数据（有就软删 = 标记 deprecated）。
+    """
+    client = get_supabase_client()
+    existing = client.select(
+        "factor_definitions",
+        filters={"id": f"eq.{factor_id}"},
+        limit=1,
+    )
+    if not existing:
+        raise api_error(
+            ErrorCode.FACTOR_NOT_FOUND,
+            f"Factor {factor_id!r} not found",
+            status=404,
+        )
+    row = existing[0]
+    if row["owner"] == "platform":
+        raise api_error(
+            ErrorCode.FACTOR_PERMISSION_DENIED,
+            "Platform factors cannot be deleted",
+            status=403,
+        )
+    user = _get_user_id(x_user_id)
+    if row["owner"] != user:
+        raise api_error(
+            ErrorCode.FACTOR_PERMISSION_DENIED,
+            "Only the owner can delete this factor",
+            status=403,
+        )
+
+    # 检查是否有 feature_values 数据，有则软删
+    values = client.select(
+        "feature_values",
+        columns="factor_id",
+        filters={"factor_id": f"eq.{factor_id}"},
+        limit=1,
+    )
+
+    if values:
+        # 软删：标记 deprecated_at
+
+        url = f"{client.url}/rest/v1/factor_definitions?id=eq.{factor_id}"
+        resp = client._http.patch(
+            url,
+            json={"deprecated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z"},
+        )
+        resp.raise_for_status()
+        logger.info("factor.soft_delete", factor_id=factor_id, reason="has_feature_values")
+    else:
+        # 硬删
+        client.delete("factor_definitions", filters={"id": f"eq.{factor_id}"})
+        logger.info("factor.hard_delete", factor_id=factor_id)
+
+    return None
+
+
+@router.post("/factors/{factor_id}/publish", summary="发布私有因子为公开")
+async def publish_factor(
+    factor_id: str,
+    payload: dict = Body(default_factory=dict),  # noqa: B008
+    x_user_id: str | None = Header(None, alias="X-User-Id"),
+):
+    """private → public。发布后进入因子市场，其他用户可订阅。
+
+    Body 可选：
+    - long_description: 完整说明
+    - license: 如 MIT
+    """
+    client = get_supabase_client()
+    existing = client.select(
+        "factor_definitions",
+        filters={"id": f"eq.{factor_id}"},
+        limit=1,
+    )
+    if not existing:
+        raise api_error(ErrorCode.FACTOR_NOT_FOUND, f"Factor {factor_id!r} not found", status=404)
+    row = existing[0]
+    if row["owner"] == "platform":
+        raise api_error(
+            ErrorCode.FACTOR_PERMISSION_DENIED, "Platform factor already public", status=400
+        )
+    user = _get_user_id(x_user_id)
+    if row["owner"] != user:
+        raise api_error(ErrorCode.FACTOR_PERMISSION_DENIED, "Only owner can publish", status=403)
+
+    patch = {
+        "visibility": "public",
+        "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+    }
+    if payload.get("long_description"):
+        patch["long_description"] = payload["long_description"]
+
+    url = f"{client.url}/rest/v1/factor_definitions?id=eq.{factor_id}"
+    resp = client._http.patch(url, json=patch, headers={"Prefer": "return=representation"})
+    resp.raise_for_status()
+    updated = resp.json()
+    return {"data": _factor_row_to_api(updated[0]) if updated else row}
+
+
+# ═══════════════════════════════════════════════════════════════
+# T-3.06 · 批量查询 & 对比
+# ═══════════════════════════════════════════════════════════════
+
+
+class BatchQueryRequest(BaseModel):
+    factor_ids: list[str] = Field(..., min_length=1, max_length=50)
+    symbols: list[str] = Field(..., min_length=1, max_length=100)
+    date: str = Field(..., description="YYYY-MM-DD 单日")
+
+
+@router.post("/factors/batch-query", summary="批量查询多因子多股票的值（矩阵返回）")
+async def batch_query(payload: BatchQueryRequest = Body(...)):
+    """从 feature_values 表拿预计算好的值。
+
+    返回矩阵格式：
+        values[symbol_idx][factor_idx]
+    """
+    client = get_supabase_client()
+
+    rows = client.select_all(
+        "feature_values",
+        columns="factor_id,symbol,value_num,value_bool",
+        filters={
+            "factor_id": f"in.({','.join(payload.factor_ids)})",
+            "symbol": f"in.({','.join(payload.symbols)})",
+            "date": f"eq.{payload.date}",
+        },
+        page_size=1000,
+    )
+
+    # 构建矩阵（保持入参顺序）
+    lookup: dict[tuple[str, str], object] = {}
+    for r in rows:
+        fid = r["factor_id"]
+        sym = r["symbol"]
+        val = r["value_num"] if r["value_num"] is not None else r["value_bool"]
+        lookup[(sym, fid)] = val
+
+    values = []
+    for sym in payload.symbols:
+        row_vals = []
+        for fid in payload.factor_ids:
+            row_vals.append(lookup.get((sym, fid)))
+        values.append(row_vals)
+
+    return {
+        "data": {
+            "date": payload.date,
+            "factors": payload.factor_ids,
+            "symbols": payload.symbols,
+            "values": values,
+        },
+        "meta": {
+            "rows_matched": len(rows),
+            "rows_expected": len(payload.symbols) * len(payload.factor_ids),
+        },
+    }
+
+
+class CompareRequest(BaseModel):
+    factor_ids: list[str] = Field(..., min_length=2, max_length=10)
+    start: str
+    end: str
+    metrics: list[str] = Field(
+        default_factory=lambda: ["trigger_count", "trigger_rate"],
+        description="支持: trigger_count / trigger_rate / avg_value",
+    )
+
+
+@router.post("/factors/compare", summary="多因子对比（从 feature_values 聚合）")
+async def compare_factors(payload: CompareRequest = Body(...)):
+    """多因子在同一时间窗口上的表现对比。
+
+    MVP 指标（从 feature_values 聚合，不算未来收益）：
+    - trigger_count: 有多少条 value_bool=true 记录（仅 boolean 因子）
+    - trigger_rate: trigger_count / 总条数
+    - avg_value: value_num 的均值（仅 scalar 因子）
+    - coverage_symbols: 覆盖的股票数
+
+    说明：winrate/sharpe 这些涉及"未来 N 日收益"，需要模型/回测联动，Epic 4 做。
+    """
+    client = get_supabase_client()
+
+    # 拉所有因子的定义（拿到 output_type）
+    defs_rows = client.select(
+        "factor_definitions",
+        columns="id,name,output_type",
+        filters={"id": f"in.({','.join(payload.factor_ids)})"},
+        limit=len(payload.factor_ids),
+    )
+    defs = {r["id"]: r for r in defs_rows}
+
+    comparison = []
+    for fid in payload.factor_ids:
+        d = defs.get(fid)
+        if not d:
+            comparison.append({"factor_id": fid, "error": "not_found"})
+            continue
+
+        # 拉值
+        values = client.select_all(
+            "feature_values",
+            columns="symbol,date,value_num,value_bool",
+            filters={
+                "factor_id": f"eq.{fid}",
+                "and": f"(date.gte.{payload.start},date.lte.{payload.end})",
+            },
+            page_size=1000,
+        )
+        if not values:
+            comparison.append(
+                {"factor_id": fid, "name": d["name"], "total": 0, "coverage_symbols": 0}
+            )
+            continue
+
+        symbols_covered = len({v["symbol"] for v in values})
+        total = len(values)
+        row = {
+            "factor_id": fid,
+            "name": d["name"],
+            "output_type": d["output_type"],
+            "total": total,
+            "coverage_symbols": symbols_covered,
+        }
+
+        if d["output_type"] == "boolean":
+            trig = sum(1 for v in values if v.get("value_bool") is True)
+            if "trigger_count" in payload.metrics:
+                row["trigger_count"] = trig
+            if "trigger_rate" in payload.metrics:
+                row["trigger_rate"] = round(trig / total, 4) if total else 0.0
+        elif d["output_type"] == "scalar" and "avg_value" in payload.metrics:
+            nums = [v["value_num"] for v in values if v.get("value_num") is not None]
+            row["avg_value"] = round(sum(nums) / len(nums), 4) if nums else None
+
+        comparison.append(row)
+
+    # winner_by_metric：每个指标选数值最大的
+    winner: dict[str, str] = {}
+    for metric in payload.metrics:
+        best_fid = None
+        best_val = None
+        for c in comparison:
+            v = c.get(metric)
+            if v is None:
+                continue
+            if best_val is None or v > best_val:
+                best_val = v
+                best_fid = c["factor_id"]
+        if best_fid:
+            winner[metric] = best_fid
+
+    return {
+        "data": {
+            "comparison": comparison,
+            "winner_by_metric": winner,
+            "window": {"start": payload.start, "end": payload.end},
+        }
+    }
+
+
+# ─── /factors/{factor_id} 必须放在所有静态路径和 history/performance 之后 ────────
+
+
+@router.get("/factors/{factor_id}/history", summary="因子历史值时间序列（T-3.06 接真实数据）")
+async def get_factor_history(
+    factor_id: str,
+    symbols: str = Query(..., description="逗号分隔，最多 20 个"),
+    start: str | None = Query(None),
+    end: str | None = Query(None),
+    format: str = Query("long", pattern="^(long|wide)$"),
+):
+    """从 feature_values 表读预计算的因子历史值。
+
+    - long：`[{symbol, date, value}, ...]`
+    - wide：`{dates: [...], symbols: {sym: [values]}}`
+
+    如果该 (factor, symbol, date 区间) 还没跑过，返回空 + status=not_computed。
+    """
+    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()][:20]
+    if not symbol_list:
+        raise api_error(ErrorCode.INVALID_PARAM, "symbols cannot be empty")
+
+    client = get_supabase_client()
+    # 确认因子存在
+    existing = client.select(
+        "factor_definitions", columns="id,output_type", filters={"id": f"eq.{factor_id}"}, limit=1
+    )
+    if not existing:
+        raise api_error(
+            ErrorCode.FACTOR_NOT_FOUND,
+            f"Factor {factor_id!r} not found",
+            status=404,
+        )
+    output_type = existing[0].get("output_type")
+
+    # 查 feature_values
+    filters: dict[str, str] = {
+        "factor_id": f"eq.{factor_id}",
+        "symbol": f"in.({','.join(symbol_list)})",
+    }
+    if start and end:
+        filters["and"] = f"(date.gte.{start},date.lte.{end})"
+    elif start:
+        filters["date"] = f"gte.{start}"
+    elif end:
+        filters["date"] = f"lte.{end}"
+
+    rows = client.select_all(
+        "feature_values",
+        columns="symbol,date,value_num,value_bool",
+        filters=filters,
+        order="date.asc",
+        page_size=1000,
+    )
+
+    def _val(r):
+        return r["value_bool"] if r["value_num"] is None else r["value_num"]
+
+    if format == "long":
+        data = [{"symbol": r["symbol"], "date": r["date"], "value": _val(r)} for r in rows]
+        return {
+            "data": data,
+            "meta": {
+                "factor_id": factor_id,
+                "output_type": output_type,
+                "rows": len(data),
+                "status": "ok" if data else "not_computed",
+            },
+        }
+    else:  # wide
+        dates_set: set[str] = set()
+        by_sym: dict[str, dict[str, object]] = {s: {} for s in symbol_list}
+        for r in rows:
+            dates_set.add(r["date"])
+            by_sym[r["symbol"]][r["date"]] = _val(r)
+        dates_sorted = sorted(dates_set)
+        symbols_out = {s: [by_sym[s].get(d) for d in dates_sorted] for s in symbol_list}
+        return {
+            "data": {"dates": dates_sorted, "symbols": symbols_out},
+            "meta": {
+                "factor_id": factor_id,
+                "output_type": output_type,
+                "dates": len(dates_sorted),
+                "status": "ok" if dates_sorted else "not_computed",
+            },
+        }
+
+
+@router.get(
+    "/factors/{factor_id}/performance",
+    summary="因子历史表现统计（MVP：从 feature_values 聚合）",
+)
+async def get_factor_performance(
+    factor_id: str,
+    start: str | None = Query(None, description="YYYY-MM-DD"),
+    end: str | None = Query(None, description="YYYY-MM-DD"),
+):
+    """给前端详情页展示：这个因子历史上的触发/分布情况。
+
+    MVP 指标（无未来收益概念，Epic 4 回测后补 winrate/sharpe）：
+    - total_records: 预计算的总条数
+    - coverage_symbols: 覆盖多少支股票
+    - coverage_days: 覆盖多少个交易日
+    - boolean: trigger_count, trigger_rate
+    - scalar: min / max / mean / std
+    """
+    client = get_supabase_client()
+    existing = client.select(
+        "factor_definitions", columns="id,output_type", filters={"id": f"eq.{factor_id}"}, limit=1
+    )
+    if not existing:
+        raise api_error(ErrorCode.FACTOR_NOT_FOUND, f"Factor {factor_id!r} not found", status=404)
+    output_type = existing[0].get("output_type")
+
+    filters: dict[str, str] = {"factor_id": f"eq.{factor_id}"}
+    if start and end:
+        filters["and"] = f"(date.gte.{start},date.lte.{end})"
+
+    rows = client.select_all(
+        "feature_values",
+        columns="symbol,date,value_num,value_bool",
+        filters=filters,
+        page_size=1000,
+    )
+
+    coverage_symbols = len({r["symbol"] for r in rows})
+    coverage_days = len({r["date"] for r in rows})
+    total = len(rows)
+    data: dict = {
+        "factor_id": factor_id,
+        "output_type": output_type,
+        "total_records": total,
+        "coverage_symbols": coverage_symbols,
+        "coverage_days": coverage_days,
+        "window": {"start": start, "end": end},
+    }
+
+    if output_type == "boolean":
+        trig = sum(1 for r in rows if r.get("value_bool") is True)
+        data["trigger_count"] = trig
+        data["trigger_rate"] = round(trig / total, 4) if total else 0.0
+    elif output_type == "scalar":
+        nums = [r["value_num"] for r in rows if r.get("value_num") is not None]
+        if nums:
+            n = len(nums)
+            m = sum(nums) / n
+            var = sum((x - m) ** 2 for x in nums) / n
+            data["min"] = min(nums)
+            data["max"] = max(nums)
+            data["mean"] = round(m, 4)
+            data["std"] = round(var**0.5, 4)
+
+    return {"data": data}
+
+
 @router.get("/factors/{factor_id}", summary="因子详情")
 async def get_factor(
     factor_id: str,
@@ -466,28 +1116,4 @@ async def get_factor(
     data = _factor_row_to_api(row)
     if not include_stats:
         data.pop("stats", None)
-    # Epic 3 会加 examples（触发案例），这里先省略
     return {"data": data}
-
-
-@router.get("/factors/{factor_id}/history", summary="因子历史值时间序列（占位）")
-async def get_factor_history(
-    factor_id: str,
-    symbols: str = Query(..., description="逗号分隔，最多 20 个"),
-    start: str | None = Query(None),
-    end: str | None = Query(None),
-    format: str = Query("long", pattern="^(long|wide)$"),
-):
-    """因子在指定股票上的历史值（读 factor_values 分区表）
-
-    MVP（T-2.01）：只返回占位结构，Epic 3 完善计算/回填后启用。
-    """
-    # 占位：返回空数据，避免前端白屏
-    return {
-        "data": [] if format == "long" else {"dates": [], "symbols": {}},
-        "meta": {
-            "factor_id": factor_id,
-            "status": "not_computed",
-            "message": "Factor values not yet computed. Will be implemented in Epic 3 (T-3.01).",
-        },
-    }

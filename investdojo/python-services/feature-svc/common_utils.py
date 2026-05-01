@@ -12,6 +12,11 @@ class ErrorCode:
     INVALID_PARAM = "invalid_param"
     FACTOR_NOT_FOUND = "factor_not_found"
     FACTOR_ALREADY_EXISTS = "factor_already_exists"
+    FACTOR_NAME_DUPLICATE = "factor_name_duplicate"
+    FACTOR_IN_USE = "factor_in_use"
+    FACTOR_PERMISSION_DENIED = "factor_permission_denied"
+    INVALID_FORMULA = "invalid_formula"
+    UNKNOWN_FUNCTION = "unknown_function"
     UNAUTHORIZED = "unauthorized"
 
 
