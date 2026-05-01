@@ -25,18 +25,27 @@ import tasks  # noqa: F401
 # A 股 15:00 收盘，数据源同步到 Supabase 约 16:00，预留缓冲。
 #
 # 启动 Beat：在 Procfile 里的 `feature-beat` 行。
+#
+# ⚠️ 2026-05-01：Supabase Free tier 磁盘 500MB 接近上限，
+#    暂停所有自动写入，等迁移到 NAS 自托管后再恢复。
+#    通过环境变量 ENABLE_DAILY_BEAT=1 可重新启用。
+import os  # noqa: E402
+
 from celery.schedules import crontab  # noqa: E402
 
 from common import celery_app
 
-celery_app.conf.beat_schedule = {
-    "daily-incremental-factor-compute": {
-        "task": "feature.compute_incremental",
-        "schedule": crontab(hour=17, minute=0),  # 每天 17:00
-        "kwargs": {"days": 2},
-        "options": {"queue": "feature"},
-    },
-}
+if os.environ.get("ENABLE_DAILY_BEAT", "0") == "1":
+    celery_app.conf.beat_schedule = {
+        "daily-incremental-factor-compute": {
+            "task": "feature.compute_incremental",
+            "schedule": crontab(hour=17, minute=0),  # 每天 17:00
+            "kwargs": {"days": 2},
+            "options": {"queue": "feature"},
+        },
+    }
+else:
+    celery_app.conf.beat_schedule = {}
 
 
 __all__ = ["celery_app"]

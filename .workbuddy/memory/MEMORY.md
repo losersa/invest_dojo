@@ -47,19 +47,65 @@
 - 统一排行榜 + 人机混排，零特殊代码路径
 - 详见 ADR 0002
 
+## 特征平台产品愿景（2026-05-01 讨论）
+用户想把 InvestDojo 的 factors 模块升级成真正的"特征平台"：
+用户在 UI 里写公式 → 选调度 → 自动计算 + 上线 + 订阅，不需要工程师手动写代码。
+
+### 现在进度（v0.5）
+- ✅ ① 定义：DSL 解析器 + 200+ 内置因子
+- ✅ ② 调度：Celery Beat 全局 17:00
+- ✅ ③ 计算：batch_compute 向量化引擎
+- ✅ ④ 存储：PostgreSQL feature_values
+- ✅ ⑤ 服务：/factors/compute API
+- ✅ ⑥ 因子库前端页（T-3.07）：列表 + 详情 + 历史值 SVG 可视化
+
+### v1 路线（接下来 2~3 周）
+- ✅ T-3.06 API 完整
+- ✅ T-3.07 因子库前端页（列表 + 详情）
+- T-3.08 因子编辑器 UI（Monaco + 语法高亮 + 预览）
+- T-3.09 因子调度面板（每个因子独立 cron + Beat 动态加载）
+- T-3.10 Redis 在线缓存（查因子 < 10ms）
+- T-3.11 因子版本化（version 列 + 历史保留）
+- T-3.12 权限分享（public/private/shared + user_id）
+
+### v2 增量（1~2 月）
+- 多数据源接入（新闻/龙虎榜/北向/情绪）
+- 实时计算（Kafka/NATS 订阅 Tick）
+- Point-in-Time 读取（回测防未来函数）
+- Feature Pipeline DAG（因子间依赖 + topo 排序）
+- 自动 backfill 调度器
+- 数据质量规则
+- A/B 分桶、订阅通知
+
+### v3 生态（3~6 月）
+- Marketplace（发布/订阅/打赏）
+- 多租户 SaaS（对外输出）
+- 因子 IDE（项目化 + Git + CI）
+- 联邦学习（合规）
+
+**短期原则**：先把 T-3.06/07/08 做出来能 demo，别过度设计。
+
+**编辑器范式决策**（2026-05-01）：v1 走 Monaco 代码编辑器（像 TradingView/聚宽），**不做拖拽可视化**。
+理由：拖拽在因子场景不是"易用"（数学表达式强行图形化反而乱），开发 4-6 周换不到本质提升。
+真要降门槛，走"模板库 + AI 自然语言生成公式"（v2 放）。详见 ADR 0003 方案 D。
+
 ## Supabase 配置（2026-04-13 接入）
 - 项目 ID: `adqznqsciqtepzimcvsg`
 - URL: `https://adqznqsciqtepzimcvsg.supabase.co`
+- **所有外部 API 凭证集中在 `~/.investdojo.env`（权限 600，工作区外，永不进 git）**
+  - 体检：`bash investdojo/scripts/check_api_access.sh`（一键验所有 token）
+  - 当前状态：Supabase Data ✅ / Supabase Mgmt ✅ / GitHub ✅
 - 表结构: scenarios(场景), klines_all(统一 K 线，字段 timeframe), news(新闻)
-- 数据量（4-29 下午 T-1.04 完成后）:
+- 数据量（4-30 晚上 T-1.05 完成后）:
   - 42 张表（含 17 年分区表 feature_values_*）
   - **全市场日 K: 5,941,010 行 / 4,376 支（2020-01-02 ~ 2026-04-28）**
   - 场景（4 个）: covid_2020 / new_energy_2020 / **crisis_2022** / **ai_boom_2023**
   - 场景日K: 2,253 行 / 场景 5m: **108,144 行**（均为真实 BaoStock）
   - symbols: 5,524 行 / industries: 102 行
   - news: 49 行
-  - **market_snapshots: 2,995 行（T-1.06 新增，2014-01-02 ~ 2026-04-29）**
-  - fundamentals: 采集中（T-1.05 后台续跑 PID 97677）
+  - market_snapshots: 2,995 行（2014-01-02 ~ 2026-04-29）
+  - **fundamentals: 559,122 行 / 5,176 支（T-1.05 真·完成，2 轮共 13h 跑完）** ⭐
+  - factor_definitions: **205 个 platform 因子**（T-3.03 + T-3.04 完成后，4 大类齐全）
 - 场景约束：`UNIQUE (scenario_id, symbol, timeframe, dt)` + NULL 时用 partial index
 - 每日自动更新：**launchd 每天 19:00 跑增量**
   - 脚本：`investdojo/scripts/update_daily_klines.py`
@@ -78,12 +124,22 @@
 - **坑点 8**：PostgREST 批量 POST 要求所有对象 key 集合完全一致，否则返回 `PGRST102 All object keys must match`。解决：补齐所有字段为 null，或逐条插入
 - **坑点 9**：FastAPI 路由按注册顺序匹配，静态路径必须写在 path parameter 前（`/factors/categories` 要在 `/factors/{id}` 之前声明）
 - **坑点 10**：pytest 跑多个 svc 同名 `common_utils.py` 会因 sys.modules 缓存冲突，用 `importlib.util.spec_from_file_location` 按绝对路径加载 + `sys.modules["common_utils"]` 注入隔离
+- **坑点 11**：Ruff lint 和 format 是两个命令，`ruff check --fix` 只改 lint 问题不改格式；commit 前必须 **先 `ruff format .`** 再 `ruff check --fix .`，否则 CI 的 Ruff format 检查步骤会红
+- **坑点 12**：Pydantic v2 discriminated union 定义后必须对每个成员类调 `Model.model_rebuild()`，否则 forward ref 无法序列化（dump_ast 会报 `PydanticUserError`）
+- **坑点 13**：klines_all 实际字段名 `pre_close`（不是 preclose）、没有 `amount` 列、DSL 的 `pct_change` 对应 DB 的 `change_percent`；panel_loader 里 FIELD_MAP 要据此映射
+- **坑点 14**：PostgREST 范围查询用 `and=(col.gte.X,col.lte.Y)`，不要试图同 key 传两次（第二个会覆盖第一个）
+- **坑点 15**：Supabase timestamptz 读出来是 `datetime64[us, UTC]`，裁剪时必须 `pd.Timestamp(start, tz=idx.tz)` 对齐，否则 `TypeError: Invalid comparison between dtype=... and Timestamp`
+- **坑点 16**：numpy.bool_ 不是 Python bool，序列化成 JSON 时要基于 `dtype` 判断而非 `isinstance(val, bool)`；ruff E721 要求用 `is bool` 而非 `== bool`
+- **坑点 17**：Supabase PostgREST 503 + Postgres 57P03 `Hot standby mode is disabled` → 不是数据库坏，是后台重启/维护，数据面在恢复但控制面（Management API）会显示 ACTIVE_HEALTHY。正确诊断：① Management API 查状态 ② status.supabase.com 查全局 ③ 都 OK 但 PostgREST 503 就是等恢复（通常 5-15 分钟）。不要慌着重启项目
+- **坑点 18**：env 文件里变量名是 `SUPABASE_SERVICE_ROLE_KEY`，不是 `SUPABASE_SERVICE_KEY`，别写错
 
 ## GitHub 仓库
 - URL: `https://github.com/losersa/invest_dojo`（注意：**下划线**，不是无符号）
 - git remote origin 已修正为带下划线形式
 - 公开仓库，GitHub Actions 无限免费额度
-- access token 存于 `apps/server/.env` 的 `SUPABASE_ACCESS_TOKEN`（注意：实际是 Supabase token 不是 GitHub token）
+- **Personal Access Token（classic）已存于 `~/.investdojo.env` 的 `GITHUB_TOKEN`**
+  - 前缀 `ghp_...`，权限覆盖仓库读写、workflow 管理
+  - 可直接调 GitHub REST API（查 CI、列 PR、push、改 workflow）
 - CI workflows 已就位：python-ci / node-ci / docs-check / test-baostock（已验证失败方案）
 
 ## 场景设计原则（2026-04-28 重构决策）
