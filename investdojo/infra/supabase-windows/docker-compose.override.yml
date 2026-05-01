@@ -1,0 +1,170 @@
+# ═══════════════════════════════════════════════════════════════════
+# InvestDojo · Supabase 自托管栈 · Windows 本地覆写
+# ═══════════════════════════════════════════════════════════════════
+#
+# 适用场景：
+#   - 宿主机：Windows 10/11 + Docker Desktop (WSL2)
+#   - 数据卷：E:\investdojo\data\ （避开系统盘）
+#   - 网络：局域网内 Mac 通过 http://<windows-ip>:8000 访问 Supabase API
+#
+# 使用方法：
+#   1. 按 README.md 克隆 supabase/docker 到某个目录，例如 E:\investdojo\supabase
+#   2. 把本文件 **和** .env 复制到该目录（和 docker-compose.yml 同级）
+#   3. 先创建好 E 盘数据目录：
+#        mkdir E:\investdojo\data\db
+#        mkdir E:\investdojo\data\db-config
+#        mkdir E:\investdojo\data\db-backup
+#        mkdir E:\investdojo\data\storage
+#        mkdir E:\investdojo\data\functions
+#        mkdir E:\investdojo\data\logs
+#   4. 启动：
+#        docker compose up -d
+#      （Docker 会自动合并 docker-compose.yml + docker-compose.override.yml）
+#
+# 重要约束：
+#   - 本文件只做 **覆写**（volumes / ports / environment / command）
+#   - 不新增服务，不删除服务；Supabase 上游版本可以随时拉取更新
+#   - 所有敏感值走 .env，不写死在本文件
+#
+# 对应文档：docs/architecture/01_数据层.md §11 备份与恢复
+# ═══════════════════════════════════════════════════════════════════
+
+services:
+
+  # ─────────────────────────────────────────────────────────────────
+  # Postgres 主库
+  # ─────────────────────────────────────────────────────────────────
+  db:
+    # 数据目录 → E 盘
+    # 注意：Supabase 上游的 volumes 名是 db-data，这里用 bind mount 覆盖掉
+    volumes:
+      # Postgres 数据目录（约 1-2 GB 起，未来 feature_values 可能 50 GB+）
+      - E:\investdojo\data\db:/var/lib/postgresql/data
+      # 自定义 Postgres 配置（下面的 command 会引用）
+      - E:\investdojo\data\db-config:/etc/postgresql-custom
+      # pg_dump 备份落地目录（容器内 /backup，宿主 E:\investdojo\data\db-backup）
+      - E:\investdojo\data\db-backup:/backup
+
+    # 对外暴露 5432，允许局域网 psql/pg_dump 直连
+    # ⚠️ 必须在 Windows 防火墙里只开放给 Private profile
+    ports:
+      - "0.0.0.0:5432:5432"
+
+    # 性能调参（560 万行 K 线 + 未来 feature_values 分区表）
+    # WSL2 建议给 12 GB 内存；这里 shared_buffers 给 2 GB
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql-custom/postgresql.conf
+      - -c
+      - hba_file=/etc/postgresql-custom/pg_hba.conf
+
+    # 健康检查宽松一点，避免 WSL2 冷启动时误判
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+    # Windows 下写盘性能：用 fsync=on 但 synchronous_commit=off
+    # 已经在 postgresql.conf 里配，这里只保留环境变量兜底
+    environment:
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+
+    # 重启策略：Windows 重启后自动拉起
+    restart: unless-stopped
+
+
+  # ─────────────────────────────────────────────────────────────────
+  # Kong · API 网关（这是对外的 :8000，代码里的 SUPABASE_URL）
+  # ─────────────────────────────────────────────────────────────────
+  kong:
+    # 绑定所有网卡，允许 Mac 从局域网访问
+    ports:
+      - "0.0.0.0:${KONG_HTTP_PORT:-8000}:8000/tcp"
+      - "0.0.0.0:${KONG_HTTPS_PORT:-8443}:8443/tcp"
+    restart: unless-stopped
+
+
+  # ─────────────────────────────────────────────────────────────────
+  # Studio · 管理面板（:3000）
+  # ─────────────────────────────────────────────────────────────────
+  studio:
+    ports:
+      - "0.0.0.0:${STUDIO_PORT:-3000}:3000/tcp"
+    restart: unless-stopped
+
+
+  # ─────────────────────────────────────────────────────────────────
+  # Auth (GoTrue)
+  # ─────────────────────────────────────────────────────────────────
+  auth:
+    # Auth 不直接对外，只通过 Kong 暴露；这里只保证 restart 策略
+    restart: unless-stopped
+
+
+  # ─────────────────────────────────────────────────────────────────
+  # PostgREST · REST API（代码里 SupabaseClient 打的就是它）
+  # ─────────────────────────────────────────────────────────────────
+  rest:
+    restart: unless-stopped
+    # 调大连接池，容纳 5 个 Python 服务 + Node orchestrator + 前端
+    environment:
+      PGRST_DB_POOL: 20
+      PGRST_DB_POOL_TIMEOUT: 30
+      # 允许更大的请求体（批量 insert K 线时需要）
+      PGRST_DB_MAX_ROWS: 10000
+
+
+  # ─────────────────────────────────────────────────────────────────
+  # Storage · 对象存储（Supabase 自己的，非 MinIO）
+  # ─────────────────────────────────────────────────────────────────
+  # 备注：你已经在 infra/docker-compose.yml 里用 MinIO 了，
+  # 这里 Supabase Storage 仍然留着（auth 有时会用），但数据卷也挪到 E 盘
+  storage:
+    volumes:
+      - E:\investdojo\data\storage:/var/lib/storage
+    restart: unless-stopped
+
+
+  # ─────────────────────────────────────────────────────────────────
+  # Meta / Realtime / Analytics / Functions：都设置 restart 策略
+  # ─────────────────────────────────────────────────────────────────
+  meta:
+    restart: unless-stopped
+
+  realtime:
+    restart: unless-stopped
+
+  analytics:
+    restart: unless-stopped
+    volumes:
+      - E:\investdojo\data\logs:/var/log/analytics
+
+  functions:
+    volumes:
+      - E:\investdojo\data\functions:/home/deno/functions
+    restart: unless-stopped
+
+  vector:
+    restart: unless-stopped
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 卷定义：覆盖上游的 named volume，避免 Docker Desktop 把数据
+# 放到 \\wsl$\docker-desktop-data\... （默认在 C 盘，后期难搬）
+# ═══════════════════════════════════════════════════════════════════
+volumes:
+  db-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: E:\investdojo\data\db
+  db-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: E:\investdojo\data\db-config
