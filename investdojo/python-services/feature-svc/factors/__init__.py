@@ -1,6 +1,7 @@
-"""factors 包：DSL 解析（T-3.01）→ 计算引擎（T-3.02）→ 内置因子（T-3.03）"""
+"""factors 包：DSL 解析（T-3.01）→ 计算引擎（T-3.02）→ 内置因子（T-3.03）→ 批量计算（T-3.05）"""
 
 from .ast_nodes import BinOp, BoolLit, Call, FieldRef, Node, NumberLit, UnaryOp, dump_ast
+from .batch_compute import compute_and_save, compute_factor_batch, compute_incremental
 from .dsl_parser import DSLError, ParseResult, UnknownFunctionError, parse_formula
 from .engine import Engine, EngineError, Panel, eval_ast, eval_instant
 from .registry import (
@@ -33,6 +34,10 @@ __all__ = [
     "Panel",
     "eval_ast",
     "eval_instant",
+    # Batch compute
+    "compute_and_save",
+    "compute_factor_batch",
+    "compute_incremental",
     # Registry
     "BUILTIN_FIELDS",
     "OPERATORS",

@@ -49,11 +49,21 @@ def _load_klines(
     scenario_id: str | None,
     timeframe: str,
 ) -> pd.DataFrame:
-    """从 klines_all 拉 K 线，返回长表 DataFrame"""
+    """从 klines_all 拉 K 线，返回长表 DataFrame
+
+    注：Supabase 的 dt 是 UTC timestamptz，北京 2024-12-30 全天数据
+    存的是 `2024-12-29T16:00:00Z ~ 2024-12-30T15:59:59Z`。
+    为了包含用户期望的"北京 end 这天"，这里把 end 的 lte 换成
+    **end+1 天的 lt**（next-day midnight UTC 之前）。
+    """
+    # end 往后推一天做 lt 查询，避免 timestamptz 边界漏数据
+    end_dt = datetime.strptime(end, "%Y-%m-%d").date() + timedelta(days=1)
+    end_lt = end_dt.strftime("%Y-%m-%d")
+
     filters: dict[str, str] = {
         "symbol": f"in.({','.join(symbols)})",
         "timeframe": f"eq.{timeframe}",
-        "and": f"(dt.gte.{load_start},dt.lte.{end})",
+        "and": f"(dt.gte.{load_start},dt.lt.{end_lt})",
     }
     if scenario_id is None:
         filters["scenario_id"] = "is.null"

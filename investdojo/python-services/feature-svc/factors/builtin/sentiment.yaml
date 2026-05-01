@@ -127,16 +127,16 @@ factors:
     name: "连续 3 日上涨"
     name_en: "3 Up Days in a Row"
     tags: ["连阳", "趋势"]
-    description: "连续 3 天收盘价上涨"
-    formula: "close > preclose AND MIN(close - preclose, 3) > 0"
+    description: "近 3 日最小涨跌幅都为正（三连阳）"
+    formula: "MIN(pct_change, 3) > 0"
     output_type: boolean
 
   - id: consecutive_down_3d
     name: "连续 3 日下跌"
     name_en: "3 Down Days in a Row"
     tags: ["连阴", "趋势"]
-    description: "连续 3 天收盘价下跌"
-    formula: "close < preclose AND MAX(close - preclose, 3) < 0"
+    description: "近 3 日最大涨跌幅都为负（三连阴）"
+    formula: "MAX(pct_change, 3) < 0"
     output_type: boolean
 
   - id: pct_change_5d_strong
