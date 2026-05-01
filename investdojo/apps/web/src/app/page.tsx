@@ -11,7 +11,7 @@ export default function HomePage() {
         </Link>
         <div className="hidden md:flex items-center gap-6">
           <Link href="/simulation" className="rc-nav-link">历史模拟</Link>
-          <span className="text-rc-text-dim cursor-not-allowed text-[16px] tracking-[0.3px]">量化回测</span>
+          <Link href="/factors" className="rc-nav-link">因子库</Link>
           <span className="text-rc-text-dim cursor-not-allowed text-[16px] tracking-[0.3px]">财报分析</span>
           <Link href="/sdk-demo" className="rc-nav-link text-[14px] opacity-70 hover:opacity-100">
             SDK Demo
@@ -72,17 +72,22 @@ export default function HomePage() {
             </span>
           </Link>
 
-          {/* Card 2: 量化回测 — Coming Soon */}
-          <div className="rc-card opacity-50">
+          {/* Card 2: 量化因子库 — Active (T-3.07) */}
+          <Link
+            href="/factors"
+            className="group rc-card-feature transition-all duration-150 hover:translate-y-[-2px]"
+          >
             <div className="text-3xl mb-5">📊</div>
-            <h3 className="text-[20px] font-medium text-rc-text-dim mb-2 tracking-[0.2px]">
-              AI 量化回测
+            <h3 className="text-[20px] font-medium text-white mb-2 tracking-[0.2px] group-hover:text-rc-blue transition-colors duration-150">
+              AI 量化因子库
             </h3>
-            <p className="text-caption text-rc-text-dim leading-relaxed">
-              用自然语言描述策略，AI 生成代码并回测
+            <p className="text-caption text-rc-text-secondary leading-relaxed">
+              200+ 内置因子，实时计算 & 历史回溯，构建你的量化策略
             </p>
-            <span className="rc-badge rc-badge-info mt-4 text-[12px]">COMING SOON</span>
-          </div>
+            <span className="inline-block mt-4 text-caption text-rc-blue group-hover:underline">
+              浏览因子 →
+            </span>
+          </Link>
 
           {/* Card 3: 财报分析 — Coming Soon */}
           <div className="rc-card opacity-50">
