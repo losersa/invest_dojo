@@ -20,7 +20,8 @@ docs/
 │   ├── 01_数据层.md                   ✅
 │   ├── 03_量化模块.md                 ✅
 │   ├── 04_联动机制.md                 ✅
-│   └── 05_特征平台.md                 ✅ 新增
+│   ├── 05_特征平台.md                 ✅ 新增
+│   └── 07_数据库表字典.md             ✅ 新增 实操速查
 ├── api/                              ← 接口规范（7 份全集）
 │   ├── 00_约定.md                    ✅
 │   ├── 01_数据API.md                 ✅
@@ -65,6 +66,7 @@ docs/
 | [03_量化模块.md](./architecture/03_量化模块.md) | ✅ Stable | MLOps 平台架构（含官方模型扩展点） |
 | [04_联动机制.md](./architecture/04_联动机制.md) | ✅ Stable | Session Orchestrator 完整设计 |
 | [05_特征平台.md](./architecture/05_特征平台.md) | ✅ Active | 五层架构栈 + v0.5~v3 路线 |
+| [07_数据库表字典.md](./architecture/07_数据库表字典.md) | ✅ Stable | **每张表干嘛、谁读谁写、多少行、踩坑** |
 
 ## 🔌 API · 接口规范
 
