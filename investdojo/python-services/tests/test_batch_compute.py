@@ -208,4 +208,3 @@ class TestCeleryTasksRegistered:
         assert hasattr(feature_tasks, "compute_incremental_task")
         assert hasattr(feature_tasks, "compute_range_task")
         assert hasattr(feature_tasks, "feature_health")
-
