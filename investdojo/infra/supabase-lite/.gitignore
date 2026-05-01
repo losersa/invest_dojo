@@ -1,0 +1,8 @@
+# 敏感配置
+.env
+.env.local
+.env.*.local
+
+# 持久化数据（大文件）
+data/
+*.dump

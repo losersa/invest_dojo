@@ -6,6 +6,10 @@
 > 对应 PRD：[product/02_量化模块_PRD.md](../product/02_量化模块_PRD.md)
 > 对应架构：[architecture/](../architecture/)
 
+> 🔧 **基础设施变更（2026-05-02）**：数据库从 Supabase Cloud 迁移到 Windows 自托管精简栈。
+> 见 [ops/2026-05-02-本地栈部署完成.md](../ops/2026-05-02-本地栈部署完成.md)。
+> **代码零改动**，所有 Epic 任务仍按原计划推进。
+
 ---
 
 ## 目录
