@@ -29,7 +29,11 @@ services:
     plugins:
       - name: cors
         config:
-          origins: ["*"]
+          origins:
+            - "http://localhost:3000"
+            - "http://127.0.0.1:3000"
+            - "http://localhost:8000"
+            - "http://127.0.0.1:8000"
           methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD]
           headers:
             - Accept
@@ -44,6 +48,8 @@ services:
             - prefer
             - range
             - range-unit
+            - X-Client-Info
+            - X-Supabase-Api-Version
           exposed_headers:
             - content-range
             - content-length
@@ -61,7 +67,11 @@ services:
     plugins:
       - name: cors
         config:
-          origins: ["*"]
+          origins:
+            - "http://localhost:3000"
+            - "http://127.0.0.1:3000"
+            - "http://localhost:8000"
+            - "http://127.0.0.1:8000"
           methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD]
           headers:
             - Accept
@@ -69,5 +79,6 @@ services:
             - Content-Type
             - apikey
             - X-Client-Info
+            - X-Supabase-Api-Version
           credentials: true
           max_age: 3600

@@ -9,7 +9,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ApiError, type Factor, type FactorCategory, type FactorCategoryCount } from "@investdojo/api";
 import { sdk } from "@/lib/sdk";
-import { UserNav } from "@/components/UserNav";
+import { MainNav } from "@/components/MainNav";
+import { useFavoriteFactors } from "@/hooks/useFavoriteFactors";
 
 const PAGE_SIZE = 24;
 
@@ -113,18 +114,7 @@ export function FactorsPage() {
   return (
     <div className="min-h-screen bg-rc-bg">
       {/* Nav */}
-      <nav className="sticky top-0 z-50 bg-rc-bg border-b border-rc-border">
-        <div className="max-w-[1400px] mx-auto flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="text-[20px] font-semibold text-white tracking-[0.2px]">
-              InvestDojo
-            </Link>
-            <span className="text-rc-text-dark">/</span>
-            <span className="text-[14px] text-rc-text-muted tracking-[0.2px]">因子库</span>
-          </div>
-          <UserNav />
-        </div>
-      </nav>
+      <MainNav />
 
       {/* Hero */}
       <section className="text-center px-6 pt-[60px] pb-[40px]">
@@ -288,12 +278,28 @@ export function FactorsPage() {
 function FactorCard({ factor }: { factor: Factor }) {
   const meta = CATEGORY_META[factor.category] ?? CATEGORY_META.custom;
   const isPlatform = factor.owner === "platform";
+  const { isFavorite, toggleFavorite } = useFavoriteFactors();
+  const faved = isFavorite(factor.id);
 
   return (
-    <Link
-      href={`/factors/${encodeURIComponent(factor.id)}`}
-      className="group rc-card-feature p-5 transition-all duration-150 hover:translate-y-[-2px] hover:border-rc-blue/40"
-    >
+    <div className="group rc-card-feature p-5 transition-all duration-150 hover:translate-y-[-2px] hover:border-rc-blue/40 relative">
+      {/* 收藏按钮 */}
+      <button
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(factor.id); }}
+        className={`absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-full transition z-10 ${
+          faved
+            ? "text-red-400 bg-red-400/10 hover:bg-red-400/20"
+            : "text-[#555] hover:text-red-400 hover:bg-red-400/10"
+        }`}
+        title={faved ? "取消收藏" : "收藏此因子"}
+      >
+        {faved ? "♥" : "♡"}
+      </button>
+
+      <Link
+        href={`/factors/${encodeURIComponent(factor.id)}`}
+        className="block"
+      >
       {/* Row 1: 分类 + output_type + 版本 */}
       <div className="flex items-center justify-between mb-3">
         <span className="rc-badge text-[11px] tracking-[0.2px] inline-flex items-center gap-1">
@@ -340,7 +346,8 @@ function FactorCard({ factor }: { factor: Factor }) {
           {isPlatform ? "⭐ 官方" : factor.owner.slice(0, 8)}
         </span>
       </div>
-    </Link>
+      </Link>
+    </div>
   );
 }
 

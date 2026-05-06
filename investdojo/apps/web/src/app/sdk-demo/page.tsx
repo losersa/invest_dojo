@@ -22,12 +22,12 @@ import {
 
 const sdk = createInvestDojoClient({
   baseURLs: {
-    data: "http://localhost:8000",
-    feature: "http://localhost:8001",
-    train: "http://localhost:8002",
-    infer: "http://localhost:8003",
-    backtest: "http://localhost:8004",
-    monitor: "http://localhost:8005",
+    data: "http://127.0.0.1:8006",
+    feature: "http://127.0.0.1:8001",
+    train: "http://127.0.0.1:8002",
+    infer: "http://127.0.0.1:8003",
+    backtest: "http://127.0.0.1:8004",
+    monitor: "http://127.0.0.1:8005",
   },
   timeoutMs: 10_000,
 });
@@ -173,9 +173,9 @@ function KlinePanel() {
     () =>
       sdk.data.getKlines({
         symbols: [symbol],
-        timeframe: "1d",
-        start: "2024-01-01",
-        end: "2024-01-15",
+        timeframe: "5m",
+        start: "2026-02-02",
+        end: "2026-02-03",
       }),
     [symbol],
   );
@@ -580,6 +580,25 @@ export default function SDKDemoPage() {
   return (
     <div style={{ minHeight: "100vh", background: "#000", padding: "24px 32px", color: "#fff" }}>
       <header style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 12 }}>
+          <a
+            href="/"
+            style={{
+              color: "#888",
+              textDecoration: "none",
+              fontSize: 13,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            ← 返回首页
+          </a>
+          {" · "}
+          <a href="/factors" style={{ color: "#888", textDecoration: "none", fontSize: 13 }}>
+            因子库
+          </a>
+        </div>
         <h1 style={{ fontSize: 24, margin: 0, letterSpacing: 0.5 }}>
           InvestDojo SDK Demo
           <span

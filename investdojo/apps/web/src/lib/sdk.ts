@@ -12,12 +12,12 @@ import { createInvestDojoClient } from "@investdojo/api";
 
 export const sdk = createInvestDojoClient({
   baseURLs: {
-    data: process.env.NEXT_PUBLIC_DATA_SVC_URL ?? "http://localhost:8000",
-    feature: process.env.NEXT_PUBLIC_FEATURE_SVC_URL ?? "http://localhost:8001",
-    train: process.env.NEXT_PUBLIC_TRAIN_SVC_URL ?? "http://localhost:8002",
-    infer: process.env.NEXT_PUBLIC_INFER_SVC_URL ?? "http://localhost:8003",
-    backtest: process.env.NEXT_PUBLIC_BACKTEST_SVC_URL ?? "http://localhost:8004",
-    monitor: process.env.NEXT_PUBLIC_MONITOR_SVC_URL ?? "http://localhost:8005",
+    data: process.env.NEXT_PUBLIC_DATA_SVC_URL ?? "http://127.0.0.1:8006",
+    feature: process.env.NEXT_PUBLIC_FEATURE_SVC_URL ?? "http://127.0.0.1:8001",
+    train: process.env.NEXT_PUBLIC_TRAIN_SVC_URL ?? "http://127.0.0.1:8002",
+    infer: process.env.NEXT_PUBLIC_INFER_SVC_URL ?? "http://127.0.0.1:8003",
+    backtest: process.env.NEXT_PUBLIC_BACKTEST_SVC_URL ?? "http://127.0.0.1:8004",
+    monitor: process.env.NEXT_PUBLIC_MONITOR_SVC_URL ?? "http://127.0.0.1:8005",
   },
   timeoutMs: 15_000,
 });

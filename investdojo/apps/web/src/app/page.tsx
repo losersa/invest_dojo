@@ -1,24 +1,11 @@
 import Link from "next/link";
-import { UserNav } from "@/components/UserNav";
+import { MainNav } from "@/components/MainNav";
 
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-rc-bg">
       {/* ---- Navigation ---- */}
-      <nav className="rc-nav max-w-[1200px] mx-auto">
-        <Link href="/" className="text-[20px] font-semibold text-rc-text-primary tracking-[0.2px]">
-          InvestDojo
-        </Link>
-        <div className="hidden md:flex items-center gap-6">
-          <Link href="/simulation" className="rc-nav-link">历史模拟</Link>
-          <Link href="/factors" className="rc-nav-link">因子库</Link>
-          <span className="text-rc-text-dim cursor-not-allowed text-[16px] tracking-[0.3px]">财报分析</span>
-          <Link href="/sdk-demo" className="rc-nav-link text-[14px] opacity-70 hover:opacity-100">
-            SDK Demo
-          </Link>
-        </div>
-        <UserNav />
-      </nav>
+      <MainNav />
 
       {/* ---- Hero Section ---- */}
       <section className="relative overflow-hidden py-[100px] md:py-[140px] px-6">

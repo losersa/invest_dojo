@@ -9,6 +9,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { MainNav } from "@/components/MainNav";
 
 type AuthMode = "login" | "register";
 
@@ -88,7 +89,9 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-rc-bg flex items-center justify-center px-4">
+    <div className="min-h-screen bg-rc-bg">
+      <MainNav />
+      <div className="flex items-center justify-center px-4" style={{ minHeight: "calc(100vh - 52px)" }}>
       <div className="w-full max-w-[400px]">
         {/* Logo */}
         <div className="text-center mb-10">
@@ -202,6 +205,7 @@ export function LoginPage() {
         <p className="mt-8 text-center text-[12px] text-rc-text-dim">
           登录即表示你同意 <span className="text-rc-text-muted">服务条款</span> 和 <span className="text-rc-text-muted">隐私政策</span>
         </p>
+      </div>
       </div>
     </div>
   );

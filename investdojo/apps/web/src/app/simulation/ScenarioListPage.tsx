@@ -8,7 +8,7 @@
 import React from "react";
 import Link from "next/link";
 import type { ScenarioMeta } from "@investdojo/core";
-import { UserNav } from "@/components/UserNav";
+import { MainNav } from "@/components/MainNav";
 
 const SCENARIOS: ScenarioMeta[] = [
   {
@@ -75,18 +75,7 @@ export function ScenarioListPage() {
   return (
     <div className="min-h-screen bg-rc-bg">
       {/* Nav */}
-      <nav className="sticky top-0 z-50 bg-rc-bg border-b border-rc-border">
-        <div className="max-w-[1200px] mx-auto flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="text-[20px] font-semibold text-white tracking-[0.2px]">
-              InvestDojo
-            </Link>
-            <span className="text-rc-text-dark">/</span>
-            <span className="text-[14px] text-rc-text-muted tracking-[0.2px]">历史模拟</span>
-          </div>
-          <UserNav />
-        </div>
-      </nav>
+      <MainNav />
 
       {/* Hero */}
       <section className="text-center px-6 pt-[80px] pb-[60px]">
