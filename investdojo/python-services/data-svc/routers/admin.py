@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json as _json
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -16,6 +17,9 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
+import psycopg2
+import psycopg2.errors
+from pydantic import BaseModel, Field
 
 from common import get_logger
 from common.supabase_client import get_supabase_client
@@ -367,7 +371,7 @@ async def get_task_history_logs(
             "total_lines": len(logs),
         }
     except Exception as exc:
-        raise _param_error(f"Failed to read history: {exc}")
+        raise _param_error(f"Failed to read history: {exc}") from exc
 
 
 def _run_script_task(task_name: str, task_info: dict) -> None:
@@ -456,10 +460,6 @@ def _run_script_task(task_name: str, task_info: dict) -> None:
 # ═══════════════════════════════════════════════════════════════
 # SQL 查询 + 表结构
 # ═══════════════════════════════════════════════════════════════
-
-import re
-import psycopg2
-from pydantic import BaseModel, Field
 
 
 class SQLQueryRequest(BaseModel):
@@ -555,9 +555,9 @@ async def execute_sql(
         finally:
             conn.close()
     except psycopg2.errors.QueryCanceled:
-        raise _param_error("Query timed out (10s limit)")
+        raise _param_error("Query timed out (10s limit)") from None
     except psycopg2.Error as exc:
-        raise _param_error(f"SQL error: {exc.pgerror or str(exc)}")
+        raise _param_error(f"SQL error: {exc.pgerror or str(exc)}") from exc
 
 
 @router.get("/admin/data/schema", summary="获取数据库表结构")
@@ -621,4 +621,4 @@ async def get_schema(
         finally:
             conn.close()
     except Exception as exc:
-        raise _param_error(f"Schema query failed: {str(exc)}")
+        raise _param_error(f"Schema query failed: {str(exc)}") from exc

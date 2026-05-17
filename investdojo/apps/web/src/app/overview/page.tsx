@@ -10,7 +10,7 @@ import progressData from "@/app/admin/progress/progress-data.json";
 
 // ── 从 JSON 计算进度 ──
 const epics = progressData.epics;
-const totalDone = epics.reduce((s, e) => s.done + e.done, 0) || epics.reduce((s, e) => s + e.done, 0);
+const totalDone = epics.reduce((s, e) => s + e.done, 0);
 const totalAll = epics.reduce((s, e) => s + e.total, 0);
 const overallPct = Math.round((totalDone / totalAll) * 100);
 

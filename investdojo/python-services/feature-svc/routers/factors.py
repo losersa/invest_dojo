@@ -10,7 +10,6 @@ Epic 3（T-3.06）：补 POST/PUT/DELETE/batch-query/compare/publish/history 真
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timedelta
 from uuid import uuid4
 

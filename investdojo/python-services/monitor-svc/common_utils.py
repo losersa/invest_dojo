@@ -144,7 +144,7 @@ async def probe_infra() -> dict[str, Any]:
     async def _with_timeout(fn, timeout=3):
         try:
             return await asyncio.wait_for(loop.run_in_executor(None, fn), timeout=timeout)
-        except (asyncio.TimeoutError, Exception):
+        except (TimeoutError, Exception):
             return False
 
     redis_ok, minio_ok, supabase_ok = await asyncio.gather(

@@ -14,8 +14,13 @@
 
 # 从 common 拿到配好的单例
 # ⚠️ 必须 import 任务模块才能触发注册
+import os
+
 import feature_tasks  # noqa: F401
 import tasks  # noqa: F401
+from celery.schedules import crontab
+
+from common import celery_app
 
 # ═══════════════════════════════════════════════════════════════
 # Celery Beat 定时调度（T-3.05）
@@ -29,11 +34,6 @@ import tasks  # noqa: F401
 # ⚠️ 2026-05-01：Supabase Free tier 磁盘 500MB 接近上限，
 #    暂停所有自动写入，等迁移到 NAS 自托管后再恢复。
 #    通过环境变量 ENABLE_DAILY_BEAT=1 可重新启用。
-import os  # noqa: E402
-
-from celery.schedules import crontab  # noqa: E402
-
-from common import celery_app
 
 if os.environ.get("ENABLE_DAILY_BEAT", "0") == "1":
     celery_app.conf.beat_schedule = {
