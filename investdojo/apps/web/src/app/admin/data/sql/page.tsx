@@ -31,7 +31,7 @@ export default function SQLQueryPage() {
   const [queryTime, setQueryTime] = useState<number>(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const headers = user ? { "X-User-Id": user.id, "X-User-Role": user.role } : {};
+  const headers: Record<string, string> = user ? { "X-User-Id": user.id, "X-User-Role": user.role } : {};
 
   // 加载表结构
   useEffect(() => {
