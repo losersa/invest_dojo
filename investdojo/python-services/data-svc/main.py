@@ -5,6 +5,7 @@
 """
 
 from routers import (
+    admin_router,
     fundamentals_router,
     klines_router,
     market_snapshots_router,
@@ -52,3 +53,4 @@ app.include_router(news_router, prefix="/api/v1/data", tags=["news"])
 app.include_router(fundamentals_router, prefix="/api/v1/data", tags=["fundamentals"])
 app.include_router(market_snapshots_router, prefix="/api/v1/data", tags=["market"])
 app.include_router(scenarios_router, prefix="/api/v1/data", tags=["scenarios"])
+app.include_router(admin_router, prefix="/api/v1/data", tags=["admin"])

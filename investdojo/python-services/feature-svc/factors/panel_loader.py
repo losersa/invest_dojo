@@ -55,8 +55,30 @@ def _load_klines(
     存的是 `2024-12-29T16:00:00Z ~ 2024-12-30T15:59:59Z`。
     为了包含用户期望的"北京 end 这天"，这里把 end 的 lte 换成
     **end+1 天的 lt**（next-day midnight UTC 之前）。
+
+    如果请求 1d 但没数据，自动尝试从 5m K 线聚合为日线。
     """
-    # end 往后推一天做 lt 查询，避免 timestamptz 边界漏数据
+    df = _fetch_klines_raw(client, symbols, load_start, end, scenario_id, timeframe)
+
+    # 没日线数据时，从 5m 聚合
+    if df.empty and timeframe == "1d":
+        logger.info("load_klines.fallback_5m_to_1d", symbols=symbols[:3], start=load_start, end=end)
+        df_5m = _fetch_klines_raw(client, symbols, load_start, end, scenario_id, "5m")
+        if not df_5m.empty:
+            df = _aggregate_5m_to_1d(df_5m)
+
+    return df
+
+
+def _fetch_klines_raw(
+    client,
+    symbols: list[str],
+    load_start: str,
+    end: str,
+    scenario_id: str | None,
+    timeframe: str,
+) -> pd.DataFrame:
+    """从 klines_all 拉原始 K 线数据"""
     end_dt = datetime.strptime(end, "%Y-%m-%d").date() + timedelta(days=1)
     end_lt = end_dt.strftime("%Y-%m-%d")
 
@@ -83,6 +105,36 @@ def _load_klines(
     df = pd.DataFrame(rows)
     df["dt"] = pd.to_datetime(df["dt"])
     return df
+
+
+def _aggregate_5m_to_1d(df_5m: pd.DataFrame) -> pd.DataFrame:
+    """将 5 分钟 K 线聚合为日线"""
+    df = df_5m.copy()
+    # 转北京时间并取日期
+    df["date"] = df["dt"].dt.tz_convert("Asia/Shanghai").dt.date
+
+    # 确保数值类型
+    for col in ("open", "high", "low", "close", "volume", "turnover"):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    agg = df.groupby(["symbol", "date"]).agg(
+        dt=("dt", "first"),
+        open=("open", "first"),
+        high=("high", "max"),
+        low=("low", "min"),
+        close=("close", "last"),
+        volume=("volume", "sum"),
+        turnover=("turnover", "sum"),
+    ).reset_index()
+
+    # 计算 pre_close 和 change_percent
+    agg = agg.sort_values(["symbol", "date"])
+    agg["pre_close"] = agg.groupby("symbol")["close"].shift(1)
+    agg["change_percent"] = ((agg["close"] - agg["pre_close"]) / agg["pre_close"] * 100).round(4)
+
+    agg.drop(columns=["date"], inplace=True)
+    return agg
 
 
 def _load_fundamentals(

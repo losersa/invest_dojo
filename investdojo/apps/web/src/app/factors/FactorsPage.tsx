@@ -8,9 +8,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ApiError, type Factor, type FactorCategory, type FactorCategoryCount } from "@investdojo/api";
-import { sdk } from "@/lib/sdk";
+import { sdk, ensureUserId } from "@/lib/sdk";
 import { MainNav } from "@/components/MainNav";
 import { useFavoriteFactors } from "@/hooks/useFavoriteFactors";
+import { createClient } from "@/lib/supabase/client";
 
 const PAGE_SIZE = 24;
 
@@ -36,9 +37,23 @@ export function FactorsPage() {
   const [activeCategory, setActiveCategory] = useState<FactorCategory | "all">("all");
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
-  const [owner, setOwner] = useState<"all" | "platform" | "user">("all");
+  // source: all=全部公开, platform=官方, community=用户发布(公开), mine=我的因子
+  const [source, setSource] = useState<"all" | "platform" | "community" | "mine">("all");
   const [sort, setSort] = useState("-updated_at");
   const [page, setPage] = useState(1);
+
+  // 当前用户
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setCurrentUserId(session?.user?.id ?? null);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setCurrentUserId(session?.user?.id ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   // 数据
   const [factors, setFactors] = useState<Factor[]>([]);
@@ -71,17 +86,40 @@ export function FactorsPage() {
     let alive = true;
     setLoading(true);
     setError(null);
-    sdk.factors
-      .listFactors({
+
+    // 根据来源计算 API 参数
+    let ownerParam: string;
+    let visibilityParam: "public" | "private" | "all";
+    if (source === "platform") {
+      ownerParam = "platform";
+      visibilityParam = "public";
+    } else if (source === "community") {
+      ownerParam = "user";
+      visibilityParam = "public";
+    } else if (source === "mine" && currentUserId) {
+      ownerParam = currentUserId;
+      visibilityParam = "all"; // 自己的因子全部可见
+    } else {
+      // all — 或者 mine 但未登录 fallback
+      ownerParam = "all";
+      visibilityParam = "public";
+    }
+
+    const doFetch = async () => {
+      await ensureUserId();
+      return sdk.factors.listFactors({
         category: activeCategory === "all" ? undefined : activeCategory,
-        owner,
-        visibility: "public",
+        owner: ownerParam,
+        visibility: visibilityParam,
         search: search || undefined,
         sort,
         include_stats: false,
         page,
         page_size: PAGE_SIZE,
-      })
+      });
+    };
+
+    doFetch()
       .then((res) => {
         if (!alive) return;
         setFactors(res.data);
@@ -99,7 +137,7 @@ export function FactorsPage() {
     return () => {
       alive = false;
     };
-  }, [activeCategory, search, owner, sort, page]);
+  }, [activeCategory, search, source, currentUserId, sort, page]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -122,6 +160,12 @@ export function FactorsPage() {
         <p className="mt-3 text-body-lg text-rc-text-secondary max-w-[640px] mx-auto">
           {total > 0 ? `${total} 个` : "200+"} 可计算因子 · 技术面 / 基本面 / 估值 / 成长 / 情绪全覆盖
         </p>
+        <Link
+          href="/factors/new"
+          className="inline-block mt-4 bg-white text-black px-5 py-2 rounded-[8px] text-[14px] font-medium hover:bg-[#ddd] transition"
+        >
+          + 创建自定义因子
+        </Link>
       </section>
 
       {/* Main */}
@@ -167,25 +211,28 @@ export function FactorsPage() {
             <div className="flex flex-col gap-1">
               {(
                 [
-                  { key: "all" as const, label: "全部" },
-                  { key: "platform" as const, label: "官方因子" },
-                  { key: "user" as const, label: "用户贡献" },
+                  { key: "all" as const, label: "全部", icon: "🗂️" },
+                  { key: "platform" as const, label: "官方因子", icon: "⭐" },
+                  { key: "community" as const, label: "用户发布", icon: "🌐" },
+                  { key: "mine" as const, label: "我的因子", icon: "👤", needLogin: true },
                 ]
               ).map((o) => {
-                const active = owner === o.key;
+                if (o.needLogin && !currentUserId) return null;
+                const active = source === o.key;
                 return (
                   <button
                     key={o.key}
                     onClick={() => {
-                      setOwner(o.key);
+                      setSource(o.key);
                       setPage(1);
                     }}
-                    className={`text-left px-3 py-2 rounded-[6px] text-[14px] tracking-[0.2px] transition-colors duration-150 ${
+                    className={`text-left px-3 py-2 rounded-[6px] text-[14px] tracking-[0.2px] transition-colors duration-150 flex items-center gap-2 ${
                       active
                         ? "bg-rc-surface-card text-white"
                         : "text-rc-text-muted hover:text-white hover:bg-rc-surface-100"
                     }`}
                   >
+                    <span>{o.icon}</span>
                     {o.label}
                   </button>
                 );
@@ -232,7 +279,23 @@ export function FactorsPage() {
               <FactorGridSkeleton />
             ) : factors.length === 0 ? (
               <div className="rc-card text-center py-16 text-rc-text-dim">
-                {search ? `未找到匹配 "${search}" 的因子` : "暂无因子"}
+                {search ? (
+                  `未找到匹配 "${search}" 的因子`
+                ) : source === "mine" ? (
+                  <div>
+                    <p className="mb-3">你还没有创建任何因子</p>
+                    <Link
+                      href="/factors/new"
+                      className="inline-block bg-white text-black px-4 py-2 rounded-[8px] text-[13px] font-medium hover:bg-[#ddd] transition"
+                    >
+                      + 创建第一个因子
+                    </Link>
+                  </div>
+                ) : source === "community" ? (
+                  "还没有用户发布的公开因子"
+                ) : (
+                  "暂无因子"
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -342,9 +405,19 @@ function FactorCard({ factor }: { factor: Factor }) {
             </span>
           ))}
         </div>
-        <span className="font-rc-mono text-rc-text-dim shrink-0">
-          {isPlatform ? "⭐ 官方" : factor.owner.slice(0, 8)}
-        </span>
+        <div className="flex items-center gap-2 font-rc-mono text-rc-text-dim shrink-0">
+          {!isPlatform && factor.visibility === "private" && (
+            <span className="px-1.5 py-0.5 rounded-[4px] bg-yellow-900/20 text-yellow-400 border border-yellow-700/30 text-[10px]">
+              私有
+            </span>
+          )}
+          {!isPlatform && factor.visibility === "public" && (
+            <span className="px-1.5 py-0.5 rounded-[4px] bg-green-900/20 text-green-400 border border-green-700/30 text-[10px]">
+              已发布
+            </span>
+          )}
+          <span>{isPlatform ? "⭐ 官方" : `👤 ${factor.owner.slice(0, 8)}`}</span>
+        </div>
       </div>
       </Link>
     </div>

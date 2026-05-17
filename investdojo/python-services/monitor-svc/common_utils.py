@@ -138,12 +138,19 @@ async def probe_all_services() -> list[dict[str, Any]]:
 # 基础设施健康
 # ──────────────────────────────────────────
 async def probe_infra() -> dict[str, Any]:
-    """检查 Redis / MinIO / Supabase"""
+    """检查 Redis / MinIO / Supabase（每项 3 秒超时）"""
     loop = asyncio.get_event_loop()
+
+    async def _with_timeout(fn, timeout=3):
+        try:
+            return await asyncio.wait_for(loop.run_in_executor(None, fn), timeout=timeout)
+        except (asyncio.TimeoutError, Exception):
+            return False
+
     redis_ok, minio_ok, supabase_ok = await asyncio.gather(
-        loop.run_in_executor(None, redis_health_check),
-        loop.run_in_executor(None, minio_health_check),
-        loop.run_in_executor(None, lambda: get_supabase_client().health_check()),
+        _with_timeout(redis_health_check),
+        _with_timeout(minio_health_check),
+        _with_timeout(lambda: get_supabase_client().health_check()),
     )
     return {
         "redis": {"status": "ok" if redis_ok else "down"},

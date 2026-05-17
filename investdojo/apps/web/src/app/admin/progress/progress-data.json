@@ -1,0 +1,377 @@
+{
+  "epics": [
+    { "id": 0, "name": "基础设施", "done": 4, "total": 4, "status": "done" },
+    { "id": 1, "name": "数据层与采集", "done": 7, "total": 7, "status": "done" },
+    { "id": 2, "name": "Python 服务骨架", "done": 6, "total": 6, "status": "done" },
+    { "id": 3, "name": "因子库", "done": 6, "total": 8, "status": "active" },
+    { "id": 4, "name": "模型训练与回测", "done": 0, "total": 7, "status": "todo" },
+    { "id": 5, "name": "模型市场 + 官方模型", "done": 0, "total": 5, "status": "todo" },
+    { "id": 6, "name": "会话编排与副驾", "done": 0, "total": 8, "status": "todo" },
+    { "id": 7, "name": "数据闭环", "done": 0, "total": 3, "status": "todo" },
+    { "id": 8, "name": "上线打磨", "done": 0, "total": 5, "status": "todo" }
+  ],
+
+  "modules": [
+    {
+      "name": "Supabase Lite",
+      "layer": "infra",
+      "status": "done",
+      "progress": 100,
+      "desc": "PostgreSQL + PostgREST + GoTrue + Kong",
+      "details": [
+        "Docker Compose 编排完成",
+        "42 张表 + 17 年分区 + RLS",
+        "自托管在 Windows，Mac 远程访问"
+      ]
+    },
+    {
+      "name": "Redis",
+      "layer": "infra",
+      "status": "done",
+      "progress": 100,
+      "desc": "缓存 + Celery Broker",
+      "details": ["本地 Docker 运行", "Celery broker DB=1 / backend DB=2"]
+    },
+    {
+      "name": "MinIO",
+      "layer": "infra",
+      "status": "done",
+      "progress": 100,
+      "desc": "对象存储（模型、报告）",
+      "details": ["S3 兼容 API", "5 个 bucket 自动创建"]
+    },
+    {
+      "name": "CI/CD",
+      "layer": "infra",
+      "status": "done",
+      "progress": 100,
+      "desc": "GitHub Actions + pre-commit",
+      "details": [
+        "Python CI: ruff + mypy + pytest + smoke",
+        "Node CI: typecheck + lint + build",
+        "Docs check: lychee 死链检测"
+      ]
+    },
+
+    {
+      "name": "data-svc",
+      "layer": "backend",
+      "status": "done",
+      "progress": 100,
+      "desc": "数据 API 服务（:8006）",
+      "details": [
+        "symbols / klines / news / fundamentals / market（完成）",
+        "管理后台 API（任务触发 + SQL 查询 + 任务历史）（完成）",
+        "强制 as_of 注入防未来函数（完成）",
+        "560 万行日K / 5528 股票 / 10.8 万 5mK（完成）"
+      ]
+    },
+    {
+      "name": "feature-svc",
+      "layer": "backend",
+      "status": "active",
+      "progress": 75,
+      "desc": "因子库服务（:8001）",
+      "details": [
+        "DSL 解析器 + 计算引擎（完成）",
+        "63 个 DSL 因子定义（完成）",
+        "CRUD + 发布/撤销 + 历史查询（完成）",
+        "批量回填 + 增量计算（完成）",
+        "200 个内置因子（未完成，待补充到 200）",
+        "Celery Beat 定时任务（未开始）"
+      ]
+    },
+    {
+      "name": "train-svc",
+      "layer": "backend",
+      "status": "partial",
+      "progress": 20,
+      "desc": "模型训练服务（:8002）",
+      "details": [
+        "FastAPI 骨架 + Celery worker（完成）",
+        "dummy_train 任务 + 状态流转（完成）",
+        "LightGBM 真实训练流水线（未开始）"
+      ]
+    },
+    {
+      "name": "infer-svc",
+      "layer": "backend",
+      "status": "partial",
+      "progress": 20,
+      "desc": "推理服务（:8003）",
+      "details": [
+        "FastAPI 骨架 + 4 个 mock 模型（完成）",
+        "真实模型加载 + 推理（未开始）",
+        "WebSocket 流式推理（未开始）"
+      ]
+    },
+    {
+      "name": "backtest-svc",
+      "layer": "backend",
+      "status": "partial",
+      "progress": 20,
+      "desc": "回测服务（:8004）",
+      "details": [
+        "FastAPI 骨架 + mock 引擎（完成）",
+        "向量化回测引擎（未开始）"
+      ]
+    },
+    {
+      "name": "monitor-svc",
+      "layer": "backend",
+      "status": "done",
+      "progress": 100,
+      "desc": "监控服务（:8005）",
+      "details": [
+        "Prometheus 指标暴露（完成）",
+        "服务健康聚合 + 业务统计（完成）",
+        "Grafana 对接（未开始，Epic 8）"
+      ]
+    },
+
+    {
+      "name": "K 线图",
+      "layer": "frontend",
+      "status": "done",
+      "progress": 100,
+      "desc": "/kline · 股票 K 线浏览",
+      "details": ["日K + 5mK 切换（完成）", "多股票对比（完成）", "成交量叠加（完成）"]
+    },
+    {
+      "name": "因子库",
+      "layer": "frontend",
+      "status": "active",
+      "progress": 80,
+      "desc": "/factors · 因子浏览与管理",
+      "details": [
+        "分类筛选 + 搜索 + 排序（完成）",
+        "因子详情 + 历史图表（完成）",
+        "创建 / 编辑 / 发布 / 撤销（完成）",
+        "我的因子 vs 社区因子（完成）",
+        "因子对比（未开始）"
+      ]
+    },
+    {
+      "name": "历史模拟",
+      "layer": "frontend",
+      "status": "partial",
+      "progress": 30,
+      "desc": "/simulation · 模拟炒股",
+      "details": [
+        "基础盲测框架（完成，v1 已有）",
+        "副驾面板集成（未开始，Epic 6）",
+        "会话复盘页（未开始，Epic 6）"
+      ]
+    },
+    {
+      "name": "数据管理",
+      "layer": "frontend",
+      "status": "done",
+      "progress": 100,
+      "desc": "/admin/data · 内部数据管理工具",
+      "details": [
+        "数据概览（各表行数 + 最近更新）（完成）",
+        "任务触发 + 实时日志 + 进度条（完成）",
+        "SQL 查询工具（只读）（完成）",
+        "任务历史记录持久化（完成）"
+      ]
+    },
+    {
+      "name": "项目进度",
+      "layer": "frontend",
+      "status": "done",
+      "progress": 100,
+      "desc": "/admin/progress · 开发进展跟踪",
+      "details": ["Epic 进度 + 模块架构 + 开发日志（完成）"]
+    },
+
+    {
+      "name": "TypeScript SDK",
+      "layer": "tooling",
+      "status": "done",
+      "progress": 100,
+      "desc": "@investdojo/api · 前端统一 SDK",
+      "details": [
+        "7 个 Client（data/factor/inference/backtest/train/monitor/session）（完成）",
+        "统一 fetch 封装 + timeout + token（完成）",
+        "类型安全（共享 types/）（完成）"
+      ]
+    },
+    {
+      "name": "数据采集脚本",
+      "layer": "tooling",
+      "status": "done",
+      "progress": 100,
+      "desc": "scripts/ · BaoStock + AKShare 采集",
+      "details": [
+        "seed_symbols / seed_daily_klines / seed_5min（完成）",
+        "seed_fundamentals / seed_market_snapshots（完成）",
+        "update_daily_klines / update_market_snapshots（增量）（完成）",
+        "backfill_factors（因子回填）（完成）"
+      ]
+    },
+    {
+      "name": "CodeBuddy Skill",
+      "layer": "tooling",
+      "status": "done",
+      "progress": 100,
+      "desc": "investdojo-dev · AI 辅助开发",
+      "details": ["多角色协作体系（完成）", "全栈启动/重启自动化（完成）", "脚手架生成（完成）"]
+    }
+  ],
+
+  "log": [
+    {
+      "date": "2026-05-17",
+      "highlights": [
+        {
+          "title": "数据管理后台增强",
+          "items": [
+            "修复 backfill_factors 任务脚本路径错误（SCRIPTS_DIR 少算一层目录）",
+            "修复 Windows GBK 编码问题（emoji 输出 + subprocess 编码设置）",
+            "修复 VENV_PYTHON fallback 逻辑，增加 sys.executable 兜底",
+            "新增任务历史日志持久化（JSON 文件存储到 .task_history/）",
+            "新增服务重启自动恢复任务状态（running → interrupted）",
+            "新增历史记录 API（GET /tasks/{name}/history）",
+            "前端进入页面即展示最新任务状态和日志",
+            "前端新增「历史」面板，可回看过去执行记录和日志",
+            "修复日志自动滚动导致页面跳转的问题"
+          ]
+        },
+        {
+          "title": "项目进度页面",
+          "items": [
+            "新建 /admin/progress 页面",
+            "Epic 进度 + 架构模块进度 + 开发日志",
+            "数据统一存储为 JSON，页面自动渲染"
+          ]
+        }
+      ],
+      "files": [
+        "python-services/data-svc/routers/admin.py",
+        "apps/web/src/app/admin/data/page.tsx",
+        "apps/web/src/app/admin/progress/page.tsx",
+        "scripts/backfill_factors.py"
+      ],
+      "status": "Epic 3 因子库持续打磨中，数据管理工具链趋于完善"
+    },
+    {
+      "date": "2026-05-16",
+      "highlights": [
+        {
+          "title": "角色与权限体系",
+          "items": [
+            "useCurrentUser hook 提供 user.role 和 isStaff() 判断",
+            "MainNav 动态菜单：staffOnly 项仅员工可见",
+            "管理员 / 测试账号配置完成"
+          ]
+        },
+        {
+          "title": "数据管理后台 v1（/admin/data）",
+          "items": [
+            "数据概览（各表行数、最近更新时间）",
+            "手动触发数据更新任务",
+            "SQL 查询工具（左侧表结构 + 右侧编辑器）",
+            "任务进度条 + 实时日志面板（2s 轮询）"
+          ]
+        }
+      ],
+      "files": [
+        "apps/web/src/hooks/useCurrentUser.ts",
+        "apps/web/src/components/MainNav.tsx",
+        "apps/web/src/app/admin/data/",
+        "python-services/data-svc/routers/admin.py"
+      ],
+      "status": "管理工具链初步建立"
+    },
+    {
+      "date": "2026-05-15",
+      "highlights": [
+        {
+          "title": "因子发布自动回填",
+          "items": [
+            "publish_factor 异步调用 _backfill_factor_async 回填 90 天数据",
+            "unpublish_factor 自动清理 feature_values 缓存"
+          ]
+        },
+        {
+          "title": "因子历史值修复",
+          "items": [
+            "panel_loader 添加 5m→1d 自动聚合",
+            "前端默认日期范围匹配数据实际范围",
+            "私有因子直接实时计算不存储"
+          ]
+        }
+      ],
+      "status": "因子计算管线全通"
+    },
+    {
+      "date": "2026-05-14",
+      "highlights": [
+        {
+          "title": "鉴权 Bug 审计与修复（4 个）",
+          "items": [
+            "or 过滤器 key 冲突 → 分离 visibility 和 search",
+            "创建因子绕过 SDK → 改用 sdk.factors.createFactor()",
+            "匿名用户可写 → _require_user_id() 强制校验",
+            "userId 格式不校验 → 检查长度 + 排除特殊值"
+          ]
+        },
+        {
+          "title": "因子库来源重构",
+          "items": [
+            "全部(公开) / 官方 / 用户发布 / 我的因子",
+            "后端 list_factors 的 owner 参数支持传 UUID"
+          ]
+        }
+      ],
+      "status": "因子库安全性和可用性大幅提升"
+    },
+    {
+      "date": "2026-05-13",
+      "highlights": [
+        {
+          "title": "因子发布/撤销功能",
+          "items": [
+            "SDK 修复：userId header 传递",
+            "后端新增 POST /factors/{id}/unpublish",
+            "前端添加撤销发布按钮"
+          ]
+        },
+        {
+          "title": "CodeBuddy Skill 创建",
+          "items": ["investdojo-dev Skill（多角色协作体系）"]
+        }
+      ],
+      "status": "因子发布流程打通，AI 辅助开发体系建立"
+    },
+    {
+      "date": "2026-05-02",
+      "highlights": [
+        {
+          "title": "Supabase 本地栈部署完成",
+          "items": [
+            "从 Cloud 迁移到 Windows 自托管 Supabase Lite",
+            "Docker Compose：PostgreSQL 15.8 + PostgREST + GoTrue + Kong",
+            "数据完整迁移：4 场景 / 72,980 K线 / 49 新闻"
+          ]
+        }
+      ],
+      "status": "基础设施稳定，进入业务开发阶段"
+    },
+    {
+      "date": "2026-04-28",
+      "highlights": [
+        {
+          "title": "MVP Sprint 0 规划完成",
+          "items": [
+            "10 周任务拆解（8 个 Epic）",
+            "Epic 0 基础设施 4/4 全部完成（实际 1.5 天）",
+            "Epic 1 数据层启动"
+          ]
+        }
+      ],
+      "status": "项目正式启动"
+    }
+  ]
+}

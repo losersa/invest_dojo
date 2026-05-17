@@ -111,6 +111,8 @@ export interface InvestDojoSDK {
 export interface SDKOptions {
   baseURLs?: SDKBaseURLs;
   token?: string | (() => string | Promise<string>);
+  /** 当前用户 id，写接口（因子 CRUD / 发布等）会带到 X-User-Id header */
+  userId?: string | (() => string | undefined);
   timeoutMs?: number;
 }
 
@@ -119,7 +121,7 @@ export function createInvestDojoClient(opts: SDKOptions = {}): InvestDojoSDK {
   const common = { token: opts.token, timeoutMs: opts.timeoutMs };
   return {
     data: new DataClient({ baseURL: urls.data, ...common }),
-    factors: new FactorClient({ baseURL: urls.feature, ...common }),
+    factors: new FactorClient({ baseURL: urls.feature, ...common, userId: opts.userId }),
     training: new TrainClient({ baseURL: urls.train, ...common }),
     inference: new InferenceClient({ baseURL: urls.infer, ...common }),
     backtests: new BacktestClient({ baseURL: urls.backtest, ...common }),

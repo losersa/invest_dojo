@@ -1,5 +1,6 @@
 """data-svc 路由聚合"""
 
+from .admin import router as admin_router
 from .fundamentals import router as fundamentals_router
 from .klines import router as klines_router
 from .market_snapshots import router as market_snapshots_router
@@ -8,6 +9,7 @@ from .scenarios import router as scenarios_router
 from .symbols import router as symbols_router
 
 __all__ = [
+    "admin_router",
     "fundamentals_router",
     "klines_router",
     "market_snapshots_router",

@@ -149,7 +149,7 @@ function KlinePageInner() {
 
   const fetchSymbolName = useCallback(async (code: string) => {
     try {
-      const resp = await fetch(`http://127.0.0.1:8006/api/v1/data/symbols/${code}`);
+      const resp = await fetch(`http://192.168.1.3:8006/api/v1/data/symbols/${code}`);
       if (resp.ok) {
         const data = await resp.json();
         setSymbolName(data.data?.name || "");
@@ -392,7 +392,7 @@ function FavoriteFactorsPanel({ symbol, start, end }: { symbol: string; start: s
 
       for (const factorId of favorites) {
         try {
-          const resp = await fetch(`http://127.0.0.1:8001/api/v1/factors/compute`, {
+          const resp = await fetch(`http://192.168.1.3:8001/api/v1/factors/compute`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -407,7 +407,7 @@ function FavoriteFactorsPanel({ symbol, start, end }: { symbol: string; start: s
             const rows = json.data || [];
             const lastRow = rows[rows.length - 1];
             // 获取因子名称
-            const metaResp = await fetch(`http://127.0.0.1:8001/api/v1/factors/${factorId}`);
+            const metaResp = await fetch(`http://192.168.1.3:8001/api/v1/factors/${factorId}`);
             const metaJson = metaResp.ok ? await metaResp.json() : null;
             const name = metaJson?.data?.name || factorId;
 

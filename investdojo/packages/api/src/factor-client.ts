@@ -47,7 +47,7 @@ export class FactorClient extends BaseClient {
     params: {
       category?: FactorCategory;
       tags?: string[];
-      owner?: "platform" | "user" | "all";
+      owner?: string; // "platform" | "user" | "all" | <user-uuid>
       visibility?: "public" | "private" | "all";
       search?: string;
       sort?: string;
@@ -56,7 +56,10 @@ export class FactorClient extends BaseClient {
       page_size?: number;
     } = {},
   ): Promise<PaginatedResponse<Factor>> {
-    return this.get("/api/v1/factors", params);
+    return this.request<PaginatedResponse<Factor>>("GET", "/api/v1/factors", {
+      query: params as Record<string, string | number | boolean | null | undefined>,
+      headers: this.userHeaders(),
+    });
   }
 
   getFactor(
@@ -182,6 +185,14 @@ export class FactorClient extends BaseClient {
       "POST",
       `/api/v1/factors/${encodeURIComponent(id)}/publish`,
       { body, headers: this.userHeaders() },
+    );
+  }
+
+  unpublishFactor(id: string): Promise<SingleResponse<Factor>> {
+    return this.request<SingleResponse<Factor>>(
+      "POST",
+      `/api/v1/factors/${encodeURIComponent(id)}/unpublish`,
+      { headers: this.userHeaders() },
     );
   }
 }

@@ -10,7 +10,8 @@ Epic 3（T-3.06）：补 POST/PUT/DELETE/batch-query/compare/publish/history 真
 
 from __future__ import annotations
 
-from datetime import datetime
+import asyncio
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 from common_utils import (
@@ -26,7 +27,7 @@ from common_utils import (
 from factors import DSLError, UnknownFunctionError, dump_ast, eval_ast, parse_formula
 from factors.engine import EngineError
 from factors.panel_loader import load_panel
-from fastapi import APIRouter, Body, Depends, Header, Query
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Header, Query
 from pydantic import BaseModel, Field
 
 from common import get_logger
@@ -69,18 +70,20 @@ def _factor_row_to_api(row: dict) -> dict:
 async def list_factors(
     category: str | None = Query(None, description=f"分类：{sorted(VALID_CATEGORIES)}"),
     tags: str | None = Query(None, description="逗号分隔，AND 关系"),
-    owner: str = Query("all", pattern="^(platform|user|all)$"),
+    owner: str = Query("all", description="platform|user|all|<user_uuid>"),
     visibility: str = Query("public", pattern="^(public|private|all)$"),
     search: str | None = Query(None, description="按 name/description 模糊搜索"),
     sort: str = Query("-updated_at", description="排序字段，- 开头表降序"),
     include_stats: bool = Query(True, description="是否包含 stats（关闭可加速）"),
     pg: dict = Depends(pagination_params),
+    x_user_id: str | None = Header(None, alias="X-User-Id"),
 ):
     """查询因子列表（支持筛选/排序/分页）
 
-    - `owner=platform` 只看官方因子；`owner=user` 只看用户自定义（owner != 'platform'）
-    - `visibility=public` 默认只返公开的
-    - 排序默认 `-updated_at`（最近更新优先）
+    - `owner=platform` 只看官方因子
+    - `owner=user` 只看用户发布的公开因子（owner != 'platform' & visibility == 'public'）
+    - `owner=<uuid>` 看指定用户的因子（仅本人可看私有，其他人只看公开）
+    - `visibility=all` 搭配 owner=<uuid> 时，仅当请求者 == owner 时才包含私有
     """
     if category and category not in VALID_CATEGORIES:
         raise api_error(
@@ -91,12 +94,45 @@ async def list_factors(
     filters: dict[str, str] = {}
     if category:
         filters["category"] = f"eq.{category}"
+
+    # ── owner 过滤 ──
+    # Bug 4 fix: 验证 X-User-Id 格式（UUID 格式或 None）
+    current_user: str | None = None
+    if x_user_id and len(x_user_id) >= 32 and x_user_id not in ("anon", "undefined", "null"):
+        current_user = x_user_id
+
+    # 用于存放 visibility 相关的 or 子条件
+    visibility_or_parts: list[str] = []
+
     if owner == "platform":
         filters["owner"] = "eq.platform"
     elif owner == "user":
+        # "用户发布" — 只显示用户创建的公开因子
         filters["owner"] = "neq.platform"
-    if visibility != "all":
-        filters["visibility"] = f"eq.{visibility}"
+        filters["visibility"] = "eq.public"
+    elif owner == "all":
+        pass  # 不加 owner 过滤
+    else:
+        # owner 是具体 user UUID
+        filters["owner"] = f"eq.{owner}"
+        # 只有本人才能看自己的私有因子
+        if current_user != owner:
+            filters["visibility"] = "eq.public"
+
+    # visibility 过滤（仅在前面未设置过 visibility 时生效）
+    if "visibility" not in filters:
+        if visibility == "all":
+            if owner == "all" and current_user:
+                # 公开的 + 自己的私有 → 存入 visibility_or_parts，稍后合并
+                visibility_or_parts = [
+                    "visibility.eq.public",
+                    f"owner.eq.{current_user}",
+                ]
+            elif owner == "all":
+                # 未登录，只看公开
+                filters["visibility"] = "eq.public"
+        elif visibility != "all":
+            filters["visibility"] = f"eq.{visibility}"
 
     # tags：PostgREST 的 cs.[...] 是 JSONB array contains（注意不是 {...}）
     tag_list = parse_tags(tags)
@@ -105,8 +141,23 @@ async def list_factors(
 
         filters["tags"] = f"cs.{_json.dumps(tag_list, ensure_ascii=False)}"
 
+    # Bug 1 fix: 合并搜索 or 和 visibility or，避免 key 冲突
+    search_or_parts: list[str] = []
     if search:
-        filters["or"] = f"(name.ilike.*{search}*,description.ilike.*{search}*)"
+        search_or_parts = [f"name.ilike.*{search}*", f"description.ilike.*{search}*"]
+
+    # 构建最终的 or 过滤器
+    if visibility_or_parts and search_or_parts:
+        # 两者都有：搜索条件用 and 包裹（PostgREST 的 and 语法），与 visibility or 组合
+        # PostgREST 不支持嵌套 and/or，所以我们把 visibility 放到普通过滤
+        # 退化方案：当有搜索时，如果有 visibility_or，改为只看公开（牺牲"我的私有"在搜索中出现）
+        # 更安全的做法是先搜索再在应用层过滤，但 MVP 阶段用退化方案
+        filters["visibility"] = "eq.public"
+        filters["or"] = f"({','.join(search_or_parts)})"
+    elif visibility_or_parts:
+        filters["or"] = f"({','.join(visibility_or_parts)})"
+    elif search_or_parts:
+        filters["or"] = f"({','.join(search_or_parts)})"
 
     # 已弃用因子不在列表里
     filters["deprecated_at"] = "is.null"
@@ -457,6 +508,23 @@ def _get_user_id(x_user_id: str | None) -> str:
     return x_user_id or "anon"
 
 
+def _require_user_id(x_user_id: str | None) -> str:
+    """写接口必须有合法的用户 ID，否则拒绝请求"""
+    if not x_user_id or x_user_id in ("anon", "undefined", "null", ""):
+        raise api_error(
+            ErrorCode.FACTOR_PERMISSION_DENIED,
+            "Authentication required: X-User-Id header missing or invalid",
+            status=401,
+        )
+    if len(x_user_id) < 32:
+        raise api_error(
+            ErrorCode.FACTOR_PERMISSION_DENIED,
+            "Invalid user ID format",
+            status=401,
+        )
+    return x_user_id
+
+
 def _gen_custom_factor_id(name: str, user_id: str) -> str:
     """生成自定义因子 id：custom_{user}_{short_uuid}"""
     return f"custom_{user_id[:8]}_{uuid4().hex[:8]}"
@@ -531,7 +599,7 @@ async def create_factor(
             f"Invalid category: {payload.category!r}. Valid: {sorted(VALID_CATEGORIES)}",
         )
 
-    owner = _get_user_id(x_user_id)
+    owner = _require_user_id(x_user_id)
 
     # 重名检查（同 owner 下）
     client = get_supabase_client()
@@ -612,7 +680,7 @@ async def update_factor(
             "Platform factors are not editable",
             status=403,
         )
-    user = _get_user_id(x_user_id)
+    user = _require_user_id(x_user_id)
     if row["owner"] != user:
         raise api_error(
             ErrorCode.FACTOR_PERMISSION_DENIED,
@@ -700,7 +768,7 @@ async def delete_factor(
             "Platform factors cannot be deleted",
             status=403,
         )
-    user = _get_user_id(x_user_id)
+    user = _require_user_id(x_user_id)
     if row["owner"] != user:
         raise api_error(
             ErrorCode.FACTOR_PERMISSION_DENIED,
@@ -734,13 +802,52 @@ async def delete_factor(
     return None
 
 
+def _backfill_factor_async(factor_id: str) -> None:
+    """后台任务：发布因子后自动回填最近 90 天的因子值。
+
+    非阻塞，失败不影响发布结果（只记日志）。
+    """
+    try:
+        from factors.batch_compute import compute_and_save  # noqa: PLC0415
+
+        end = datetime.utcnow().strftime("%Y-%m-%d")
+        start = (datetime.utcnow() - timedelta(days=90)).strftime("%Y-%m-%d")
+
+        logger.info(
+            "factor.backfill_start",
+            factor_id=factor_id,
+            start=start,
+            end=end,
+        )
+
+        result = compute_and_save(
+            start=start,
+            end=end,
+            factor_ids=[factor_id],
+            symbols=None,  # 全部活跃股票
+            batch_size=100,
+            dry_run=False,
+        )
+
+        logger.info(
+            "factor.backfill_done",
+            factor_id=factor_id,
+            rows_written=result.get("rows_written", 0) if isinstance(result, dict) else 0,
+        )
+    except Exception as exc:
+        logger.error("factor.backfill_failed", factor_id=factor_id, error=str(exc))
+
+
 @router.post("/factors/{factor_id}/publish", summary="发布私有因子为公开")
 async def publish_factor(
     factor_id: str,
+    background_tasks: BackgroundTasks,
     payload: dict = Body(default_factory=dict),  # noqa: B008
     x_user_id: str | None = Header(None, alias="X-User-Id"),
 ):
     """private → public。发布后进入因子市场，其他用户可订阅。
+
+    发布成功后自动在后台回填最近 90 天的因子值到 feature_values。
 
     Body 可选：
     - long_description: 完整说明
@@ -759,7 +866,7 @@ async def publish_factor(
         raise api_error(
             ErrorCode.FACTOR_PERMISSION_DENIED, "Platform factor already public", status=400
         )
-    user = _get_user_id(x_user_id)
+    user = _require_user_id(x_user_id)
     if row["owner"] != user:
         raise api_error(ErrorCode.FACTOR_PERMISSION_DENIED, "Only owner can publish", status=403)
 
@@ -774,12 +881,58 @@ async def publish_factor(
     resp = client._http.patch(url, json=patch, headers={"Prefer": "return=representation"})
     resp.raise_for_status()
     updated = resp.json()
+
+    # 异步回填最近 90 天因子值（不阻塞响应）
+    background_tasks.add_task(_backfill_factor_async, factor_id)
+
     return {"data": _factor_row_to_api(updated[0]) if updated else row}
 
 
-# ═══════════════════════════════════════════════════════════════
-# T-3.06 · 批量查询 & 对比
-# ═══════════════════════════════════════════════════════════════
+@router.post("/factors/{factor_id}/unpublish", summary="撤销发布（公开→私有）")
+async def unpublish_factor(
+    factor_id: str,
+    x_user_id: str | None = Header(None, alias="X-User-Id"),
+):
+    """public → private。只有 owner 可以撤销发布。"""
+    client = get_supabase_client()
+    existing = client.select(
+        "factor_definitions",
+        filters={"id": f"eq.{factor_id}"},
+        limit=1,
+    )
+    if not existing:
+        raise api_error(ErrorCode.FACTOR_NOT_FOUND, f"Factor {factor_id!r} not found", status=404)
+    row = existing[0]
+    if row["owner"] == "platform":
+        raise api_error(
+            ErrorCode.FACTOR_PERMISSION_DENIED, "Cannot unpublish platform factor", status=400
+        )
+    user = _require_user_id(x_user_id)
+    if row["owner"] != user:
+        raise api_error(ErrorCode.FACTOR_PERMISSION_DENIED, "Only owner can unpublish", status=403)
+    if row.get("visibility") == "private":
+        raise api_error(
+            ErrorCode.INVALID_PARAM, "Factor is already private", status=400
+        )
+
+    patch = {
+        "visibility": "private",
+        "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+    }
+    url = f"{client.url}/rest/v1/factor_definitions?id=eq.{factor_id}"
+    resp = client._http.patch(url, json=patch, headers={"Prefer": "return=representation"})
+    resp.raise_for_status()
+    updated = resp.json()
+
+    # 清理该因子的 feature_values 缓存（私有因子不需要占用存储）
+    try:
+        del_url = f"{client.url}/rest/v1/feature_values?factor_id=eq.{factor_id}"
+        client._http.delete(del_url)
+        logger.info("factor.cache_cleared", factor_id=factor_id)
+    except Exception as exc:
+        logger.warning("factor.cache_clear_failed", factor_id=factor_id, error=str(exc))
+
+    return {"data": _factor_row_to_api(updated[0]) if updated else row}
 
 
 class BatchQueryRequest(BaseModel):

@@ -64,14 +64,14 @@ def main():
 
         symbols = _load_active_symbols(limit=args.symbol_limit)
 
-    print("═" * 58)
-    print("  📊 InvestDojo 因子值全量回填")
+    print("=" * 58)
+    print("  [*] InvestDojo 因子值全量回填")
     print(f"  区间: {start} ~ {end}")
     print(f"  因子: {'全部 platform' if factor_ids is None else f'{len(factor_ids)} 个'}")
     print(f"  股票: {'symbols 全部' if symbols is None else f'{len(symbols)} 个'}")
     print(f"  每批: {args.batch_size} 只股票")
-    print(f"  模式: {'🧪 DRY-RUN' if args.dry_run else '✍️  实际写入'}")
-    print("═" * 58)
+    print(f"  模式: {'[DRY-RUN]' if args.dry_run else '[WRITE]'}")
+    print("=" * 58)
 
     t0 = time.perf_counter()
     result = compute_and_save(
@@ -85,17 +85,17 @@ def main():
     duration = time.perf_counter() - t0
 
     print()
-    print("══════════════════════════════════════════")
-    print(f"  ✅ 写入 {result['records_written']:,} 条")
-    print(f"  📋 因子: {result['factors_computed']}")
-    print(f"  📋 股票: {result['symbols']}")
-    print(f"  📋 批次: {result['batches']}")
-    print(f"  ⏱  耗时: {duration:.1f} 秒（{duration / 60:.1f} 分钟）")
+    print("=" * 42)
+    print(f"  [OK] 写入 {result['records_written']:,} 条")
+    print(f"  因子: {result['factors_computed']}")
+    print(f"  股票: {result['symbols']}")
+    print(f"  批次: {result['batches']}")
+    print(f"  耗时: {duration:.1f} 秒 ({duration / 60:.1f} 分钟)")
     if result["errors"]:
-        print(f"  ⚠  错误: {len(result['errors'])}（前 5 条）")
+        print(f"  [WARN] 错误: {len(result['errors'])} (前 5 条)")
         for e in result["errors"][:5]:
             print(f"     {e}")
-    print("══════════════════════════════════════════")
+    print("=" * 42)
 
 
 if __name__ == "__main__":

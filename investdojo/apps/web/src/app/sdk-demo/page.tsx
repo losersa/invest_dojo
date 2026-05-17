@@ -1,17 +1,14 @@
 "use client";
 
 /**
- * SDK Demo 页 - 展示 @investdojo/api SDK 的端到端能力
+ * API 测试页 — 展示 @investdojo/api SDK 的端到端能力，可用于快速验证各服务是否正常
  *
  * 前置：本地所有 6 个 svc 运行中
- *   cd investdojo/python-services && make dev
- *
  * 访问：http://localhost:3000/sdk-demo
  */
 import { useEffect, useState } from "react";
 import {
   ApiError,
-  createInvestDojoClient,
   type BacktestResult,
   type Factor,
   type KLine,
@@ -19,18 +16,9 @@ import {
   type Signal,
   type SystemOverview,
 } from "@investdojo/api";
-
-const sdk = createInvestDojoClient({
-  baseURLs: {
-    data: "http://127.0.0.1:8006",
-    feature: "http://127.0.0.1:8001",
-    train: "http://127.0.0.1:8002",
-    infer: "http://127.0.0.1:8003",
-    backtest: "http://127.0.0.1:8004",
-    monitor: "http://127.0.0.1:8005",
-  },
-  timeoutMs: 10_000,
-});
+import { sdk } from "@/lib/sdk";
+import { MainNav } from "@/components/MainNav";
+import { useCurrentUser, isStaff } from "@/hooks/useCurrentUser";
 
 type Box<T> = { loading: boolean; error?: string; data?: T };
 
@@ -577,30 +565,36 @@ function Stat({ label, value, color }: { label: string; value: string; color?: s
 
 // ─── 主页面 ────
 export default function SDKDemoPage() {
-  return (
-    <div style={{ minHeight: "100vh", background: "#000", padding: "24px 32px", color: "#fff" }}>
-      <header style={{ marginBottom: 20 }}>
-        <div style={{ marginBottom: 12 }}>
-          <a
-            href="/"
-            style={{
-              color: "#888",
-              textDecoration: "none",
-              fontSize: 13,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            ← 返回首页
-          </a>
-          {" · "}
-          <a href="/factors" style={{ color: "#888", textDecoration: "none", fontSize: 13 }}>
-            因子库
-          </a>
+  const { user, loading: authLoading } = useCurrentUser();
+
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#000", color: "#fff" }}>
+        <MainNav />
+        <div style={{ padding: "80px 32px", textAlign: "center", color: "#888" }}>加载中...</div>
+      </div>
+    );
+  }
+
+  if (!isStaff(user)) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#000", color: "#fff" }}>
+        <MainNav />
+        <div style={{ padding: "80px 32px", textAlign: "center" }}>
+          <h1 style={{ fontSize: 24, marginBottom: 16 }}>🔒 无权限访问</h1>
+          <p style={{ color: "#888" }}>此页面仅限内部员工使用，请先登录员工账号。</p>
         </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#000", color: "#fff" }}>
+      <MainNav />
+      <div style={{ padding: "24px 32px" }}>
+      <header style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 24, margin: 0, letterSpacing: 0.5 }}>
-          InvestDojo SDK Demo
+          API 测试台
           <span
             style={{
               marginLeft: 12,
@@ -617,7 +611,7 @@ export default function SDKDemoPage() {
           </span>
         </h1>
         <p style={{ color: "#888", fontSize: 13, marginTop: 4 }}>
-          Sprint 0 / T-2.06 验证 · 前端直连 6 个本地微服务（data/feature/train/infer/backtest/monitor）
+          端到端验证 · 前端直连 6 个本地微服务（data/feature/train/infer/backtest/monitor）
         </p>
       </header>
 
@@ -656,6 +650,7 @@ export default function SDKDemoPage() {
           cd investdojo/python-services && make dev
         </code>
       </footer>
+      </div>
     </div>
   );
 }

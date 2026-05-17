@@ -7,18 +7,21 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ApiError,
   type Factor,
   type FactorHistoryLong,
   type FactorPerformance,
 } from "@investdojo/api";
-import { sdk } from "@/lib/sdk";
-import { UserNav } from "@/components/UserNav";
+import { sdk, ensureUserId } from "@/lib/sdk";
+import { MainNav } from "@/components/MainNav";
+import { useFavoriteFactors } from "@/hooks/useFavoriteFactors";
+import { createClient } from "@/lib/supabase/client";
 
-// 默认取最近跑过的一段——对齐 T-3.05 backfill 窗口
-const DEFAULT_START = "2024-10-01";
-const DEFAULT_END = "2024-12-31";
+// 默认取最近有数据的区间
+const DEFAULT_START = "2026-03-01";
+const DEFAULT_END = "2026-04-30";
 const DEFAULT_SYMBOLS = ["600519", "000001", "300750"];
 
 const OUTPUT_TYPE_LABEL: Record<string, string> = {
@@ -103,9 +106,41 @@ export function FactorDetailPage({ factorId }: { factorId: string }) {
     if (!factor || symbols.length === 0) return;
     setHistLoading(true);
     setHistError(null);
-    sdk.factors
-      .getFactorHistory(factor.id, { symbols, start, end, format: "long" })
-      .then((res) => setHistory(res))
+
+    // 策略：
+    // - 公开因子（visibility=public）→ 先读 feature_values 缓存，为空则实时算
+    // - 私有因子（visibility=private）→ 直接实时计算，不浪费存储
+    const useCache = factor.visibility === "public";
+
+    const doCompute = () =>
+      sdk.factors
+        .computeFactor({ factor_id: factor.id, symbols, start, end, format: "long" })
+        .then((computeRes) => {
+          const rows = computeRes.data as Array<{ symbol: string; date: string; value: number | boolean }>;
+          setHistory({
+            data: rows ?? [],
+            meta: {
+              factor_id: factor.id,
+              status: rows && rows.length > 0 ? "computed_realtime" : "no_data",
+              ...(computeRes.meta ?? {}),
+            },
+          });
+        });
+
+    const promise = useCache
+      ? sdk.factors
+          .getFactorHistory(factor.id, { symbols, start, end, format: "long" })
+          .then((res) => {
+            if (res.data && res.data.length > 0) {
+              setHistory(res);
+              return;
+            }
+            // 缓存为空，fallback 实时计算
+            return doCompute();
+          })
+      : doCompute(); // 私有因子直接实时算
+
+    promise
       .catch((e: unknown) => {
         setHistError(e instanceof ApiError ? `[${e.code}] ${e.message}` : String(e));
         setHistory(null);
@@ -186,14 +221,17 @@ export function FactorDetailPage({ factorId }: { factorId: string }) {
             )}
           </div>
 
-          <div className="shrink-0 text-right">
-            <div className="text-[11px] font-rc-mono text-rc-text-dim uppercase tracking-[0.3px]">
-              Lookback
+          <div className="shrink-0 text-right space-y-3">
+            <div>
+              <div className="text-[11px] font-rc-mono text-rc-text-dim uppercase tracking-[0.3px]">
+                Lookback
+              </div>
+              <div className="text-[24px] font-rc-mono text-rc-blue leading-none mt-1">
+                {factor.lookback_days}
+                <span className="text-[12px] text-rc-text-dim ml-1">天</span>
+              </div>
             </div>
-            <div className="text-[24px] font-rc-mono text-rc-blue leading-none mt-1">
-              {factor.lookback_days}
-              <span className="text-[12px] text-rc-text-dim ml-1">天</span>
-            </div>
+            <FactorActions factorId={factor.id} owner={factor.owner} visibility={factor.visibility} onPublished={() => window.location.reload()} />
           </div>
         </div>
 
@@ -275,8 +313,19 @@ export function FactorDetailPage({ factorId }: { factorId: string }) {
         </div>
 
         {histError && (
-          <div className="rc-card border-rc-red/40 text-rc-red text-[13px]">
-            查询失败：{histError}
+          <div className="rc-card border-rc-red/40 text-[13px]">
+            {histError.includes("not in panel") ? (
+              <div>
+                <p className="text-rc-yellow mb-2">
+                  此因子依赖的字段（如 market_cap、pe_ttm、pb 等）需要基本面数据支撑，当前尚未采集。
+                </p>
+                <p className="text-rc-text-dim">
+                  仅使用 K 线字段（close、open、high、low、volume 等）的因子可正常计算。
+                </p>
+              </div>
+            ) : (
+              <span className="text-rc-red">查询失败：{histError}</span>
+            )}
           </div>
         )}
 
@@ -287,35 +336,141 @@ export function FactorDetailPage({ factorId }: { factorId: string }) {
 }
 
 // ────────────────────────────────────────────
+// 操作按钮（收藏 + 发布 + 删除）
+// ────────────────────────────────────────────
+function FactorActions({ factorId, owner, visibility, onPublished }: {
+  factorId: string;
+  owner: string;
+  visibility: string;
+  onPublished?: () => void;
+}) {
+  const { isFavorite, toggleFavorite } = useFavoriteFactors();
+  const faved = isFavorite(factorId);
+  const router = useRouter();
+  const [deleting, setDeleting] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [unpublishing, setUnpublishing] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // 获取当前登录用户 ID
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setCurrentUserId(user?.id ?? null);
+    });
+  }, []);
+
+  // 是否是因子所有者（只有所有者才能编辑/删除/发布）
+  const isOwner = currentUserId && owner === currentUserId;
+
+  const handleDelete = async () => {
+    if (!confirm("确定删除此因子？此操作不可撤销。")) return;
+    setDeleting(true);
+    try {
+      await ensureUserId();
+      await sdk.factors.deleteFactor(factorId);
+      router.push("/factors");
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "删除失败");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!confirm("发布后此因子将对所有用户可见，确定发布？")) return;
+    setPublishing(true);
+    try {
+      await ensureUserId();
+      await sdk.factors.publishFactor(factorId);
+      onPublished?.();
+      alert("发布成功！其他用户现在可以看到此因子了。");
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "发布失败");
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const handleUnpublish = async () => {
+    if (!confirm("撤销发布后此因子将变为私有，其他用户将无法看到。确定撤销？")) return;
+    setUnpublishing(true);
+    try {
+      await ensureUserId();
+      await sdk.factors.unpublishFactor(factorId);
+      onPublished?.();
+      alert("已撤销发布，因子已恢复为私有。");
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "撤销发布失败");
+    } finally {
+      setUnpublishing(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2 justify-end flex-wrap">
+      <button
+        onClick={() => toggleFavorite(factorId)}
+        className={`px-3 py-1.5 rounded text-xs border transition ${
+          faved
+            ? "bg-red-900/30 border-red-700/50 text-red-300 hover:bg-red-900/50"
+            : "bg-[#111] border-[#333] text-[#888] hover:text-red-300 hover:border-red-700/50"
+        }`}
+      >
+        {faved ? "♥ 已收藏" : "♡ 收藏"}
+      </button>
+      {isOwner && visibility === "private" && (
+        <button
+          onClick={handlePublish}
+          disabled={publishing}
+          className="px-3 py-1.5 rounded text-xs border bg-[#0a2a1a] border-green-700/50 text-green-300 hover:bg-green-900/30 transition disabled:opacity-40"
+        >
+          {publishing ? "发布中..." : "🌐 发布"}
+        </button>
+      )}
+      {isOwner && visibility === "public" && (
+        <button
+          onClick={handleUnpublish}
+          disabled={unpublishing}
+          className="px-3 py-1.5 rounded text-xs border bg-[#1a1a0a] border-yellow-700/50 text-yellow-300 hover:bg-yellow-900/30 transition disabled:opacity-40"
+        >
+          {unpublishing ? "撤销中..." : "🔒 撤销发布"}
+        </button>
+      )}
+      {isOwner && (
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          className="px-3 py-1.5 rounded text-xs border bg-[#111] border-[#333] text-[#888] hover:text-red-400 hover:border-red-700/50 transition disabled:opacity-40"
+        >
+          {deleting ? "删除中..." : "删除"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────
 // Shell
 // ────────────────────────────────────────────
 
 function Shell({ name, children }: { name?: string; children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-rc-bg">
-      <nav className="sticky top-0 z-50 bg-rc-bg border-b border-rc-border">
-        <div className="max-w-[1200px] mx-auto flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <Link href="/" className="text-[20px] font-semibold text-white tracking-[0.2px]">
-              InvestDojo
-            </Link>
-            <span className="text-rc-text-dark">/</span>
-            <Link href="/factors" className="text-[14px] text-rc-text-muted hover:text-white tracking-[0.2px]">
-              因子库
-            </Link>
-            {name && (
-              <>
-                <span className="text-rc-text-dark">/</span>
-                <span className="text-[14px] text-white tracking-[0.2px] truncate max-w-[360px]">
-                  {name}
-                </span>
-              </>
-            )}
-          </div>
-          <UserNav />
+      <MainNav />
+      {/* 面包屑 */}
+      <div className="max-w-[1200px] mx-auto px-6 pt-4">
+        <div className="flex items-center gap-2 text-sm text-[#888]">
+          <Link href="/factors" className="hover:text-white transition">因子库</Link>
+          {name && (
+            <>
+              <span>/</span>
+              <span className="text-white truncate max-w-[360px]">{name}</span>
+            </>
+          )}
         </div>
-      </nav>
-      <main className="max-w-[1200px] mx-auto px-6 py-10">{children}</main>
+      </div>
+      <main className="max-w-[1200px] mx-auto px-6 py-6">{children}</main>
     </div>
   );
 }

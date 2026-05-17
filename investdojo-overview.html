@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InvestDojo — 项目全景</title>
+<style>
+:root {
+  --bg: #0a0a0a;
+  --bg-card: #111;
+  --bg-card-hover: #161616;
+  --border: #1e1e1e;
+  --blue: #3b82f6;
+  --blue-dim: rgba(59,130,246,0.12);
+  --green: #22c55e;
+  --green-dim: rgba(34,197,94,0.12);
+  --yellow: #eab308;
+  --yellow-dim: rgba(234,179,8,0.12);
+  --red: #ef4444;
+  --purple: #a855f7;
+  --purple-dim: rgba(168,85,247,0.12);
+  --orange: #f97316;
+  --text: #fff;
+  --text-dim: rgba(255,255,255,0.45);
+  --text-sec: rgba(255,255,255,0.7);
+  --font: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html { font-size: 16px; scroll-behavior: smooth; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); overflow-x: hidden; }
+
+/* ── Slide System ── */
+.slide {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(2rem, 6vw, 5rem);
+  position: relative;
+  border-bottom: 1px solid var(--border);
+}
+.slide-number {
+  position: absolute;
+  top: 2rem;
+  right: 2rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+}
+
+/* ── Typography ── */
+h1 { font-size: clamp(2.5rem, 7vw, 5rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
+h2 { font-size: clamp(1.8rem, 4vw, 3rem); font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+h3 { font-size: clamp(1rem, 2vw, 1.4rem); font-weight: 600; line-height: 1.3; }
+.subtitle { font-size: clamp(0.9rem, 1.5vw, 1.2rem); color: var(--text-sec); line-height: 1.6; max-width: 700px; }
+.label { font-family: var(--mono); font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text-dim); }
+.mono { font-family: var(--mono); }
+.dim { color: var(--text-dim); }
+.blue { color: var(--blue); }
+.green { color: var(--green); }
+
+/* ── Cards ── */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: background 0.2s;
+}
+.card:hover { background: var(--bg-card-hover); }
+
+/* ── Grid ── */
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+@media (max-width: 900px) {
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+}
+.flex-col { display: flex; flex-direction: column; gap: 1rem; }
+.gap-2 { gap: 2rem; }
+.gap-3 { gap: 3rem; }
+.mt-1 { margin-top: 0.5rem; }
+.mt-2 { margin-top: 1rem; }
+.mt-3 { margin-top: 2rem; }
+.mb-1 { margin-bottom: 0.5rem; }
+.mb-2 { margin-bottom: 1rem; }
+.center { text-align: center; }
+
+/* ── Progress Bar ── */
+.bar-bg { height: 6px; background: #1a1a1a; border-radius: 3px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+.bar-blue { background: var(--blue); }
+.bar-green { background: var(--green); }
+.bar-yellow { background: var(--yellow); }
+.bar-gray { background: #333; }
+
+/* ── Status Dot ── */
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-green { background: var(--green); }
+.dot-blue { background: var(--blue); animation: pulse 2s infinite; }
+.dot-yellow { background: var(--yellow); }
+.dot-gray { background: #444; }
+@keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:0.4; } }
+
+/* ── Badge ── */
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+}
+.badge-done { background: var(--green-dim); color: var(--green); }
+.badge-active { background: var(--blue-dim); color: var(--blue); }
+.badge-todo { background: #1a1a1a; color: #666; }
+.badge-partial { background: var(--yellow-dim); color: var(--yellow); }
+.badge-port { background: var(--purple-dim); color: var(--purple); }
+
+/* ── Architecture Diagram ── */
+.arch-layer {
+  padding: 1rem 1.5rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+.arch-layer-title {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 0.8rem;
+}
+.svc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 0.75rem;
+  margin: 0.2rem;
+}
+.svc-chip .port { font-family: var(--mono); font-size: 0.6rem; color: var(--purple); }
+
+/* ── Stat ── */
+.stat-num { font-size: clamp(1.5rem, 4vw, 3rem); font-weight: 800; font-family: var(--mono); }
+.stat-label { font-size: 0.7rem; color: var(--text-dim); margin-top: 0.2rem; }
+
+/* ── Timeline ── */
+.tl-item { display: flex; gap: 1rem; position: relative; padding-bottom: 1.5rem; }
+.tl-item:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 14px;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+.tl-dot { width: 11px; height: 11px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+.tl-date { font-family: var(--mono); font-size: 0.7rem; color: var(--blue); }
+.tl-text { font-size: 0.8rem; color: var(--text-sec); }
+
+/* ── Nav ── */
+.nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 2rem;
+  background: rgba(10,10,10,0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+.nav a { color: var(--text-dim); text-decoration: none; font-size: 0.75rem; transition: color 0.2s; }
+.nav a:hover { color: var(--text); }
+.nav-links { display: flex; gap: 1.5rem; }
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav class="nav">
+  <span style="font-weight:700;font-size:0.9rem;color:var(--text);">InvestDojo</span>
+  <div class="nav-links">
+    <a href="#cover">首页</a>
+    <a href="#vision">愿景</a>
+    <a href="#arch">架构</a>
+    <a href="#stack">技术栈</a>
+    <a href="#data">数据</a>
+    <a href="#modules">模块</a>
+    <a href="#progress">进度</a>
+    <a href="#roadmap">路线图</a>
+  </div>
+</nav>
+
+<!-- ═══ Slide 1: Cover ═══ -->
+<section class="slide" id="cover" style="justify-content:center;align-items:center;text-align:center;">
+  <span class="slide-number">01 / 08</span>
+  <div class="label mb-2">QUANTITATIVE TRADING SIMULATION PLATFORM</div>
+  <h1 style="background:linear-gradient(135deg,#3b82f6,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">
+    InvestDojo
+  </h1>
+  <h1 style="margin-top:-0.3rem;">投资道场</h1>
+  <p class="subtitle mt-2 center" style="margin:1rem auto 0;">
+    AI 驱动的量化交易学习平台<br>
+    因子库 · 模型训练 · 历史回测 · AI 副驾 · 模拟炒股
+  </p>
+  <div style="margin-top:3rem;display:flex;gap:2rem;justify-content:center;flex-wrap:wrap;">
+    <div><span class="stat-num blue">6</span><div class="stat-label">微服务</div></div>
+    <div><span class="stat-num green">560万+</span><div class="stat-label">K 线数据</div></div>
+    <div><span class="stat-num" style="color:var(--purple);">63</span><div class="stat-label">量化因子</div></div>
+    <div><span class="stat-num" style="color:var(--orange);">5500+</span><div class="stat-label">A 股覆盖</div></div>
+  </div>
+</section>
+
+<!-- ═══ Slide 2: Vision ═══ -->
+<section class="slide" id="vision">
+  <span class="slide-number">02 / 08</span>
+  <div class="label mb-1">VISION & MISSION</div>
+  <h2>让每个人都能学会量化投资</h2>
+  <p class="subtitle mt-2">
+    InvestDojo 不是又一个交易软件。它是一个<strong>学习平台</strong>——通过历史模拟、
+    AI 辅助决策、因子研究和模型训练，让普通投资者理解量化思维，提升投资决策能力。
+  </p>
+  <div class="grid-3 mt-3">
+    <div class="card">
+      <h3 style="color:var(--blue);">因子研究</h3>
+      <p class="mt-1" style="font-size:0.85rem;color:var(--text-sec);">
+        浏览 200+ 内置因子，理解技术指标、基本面、情绪面的量化表达。自己动手写公式，即时验证效果。
+      </p>
+    </div>
+    <div class="card">
+      <h3 style="color:var(--green);">模型训练</h3>
+      <p class="mt-1" style="font-size:0.85rem;color:var(--text-sec);">
+        零代码一键训练 LightGBM 模型。选因子、定参数、跑回测，10 分钟内获得完整评估报告。
+      </p>
+    </div>
+    <div class="card">
+      <h3 style="color:var(--purple);">AI 副驾</h3>
+      <p class="mt-1" style="font-size:0.85rem;color:var(--text-sec);">
+        在历史模拟中，AI 实时给出买卖建议。你做决定，AI 做参谋。复盘时看看谁更准。
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ Slide 3: Architecture ═══ -->
+<section class="slide" id="arch">
+  <span class="slide-number">03 / 08</span>
+  <div class="label mb-1">SYSTEM ARCHITECTURE</div>
+  <h2>系统架构</h2>
+  <p class="subtitle mt-1">Monorepo + 微服务 + 自托管 Supabase</p>
+
+  <div class="flex-col mt-3 gap-2" style="max-width:900px;">
+    <!-- Frontend -->
+    <div class="arch-layer" style="border-color:var(--blue);background:rgba(59,130,246,0.03);">
+      <div class="arch-layer-title" style="color:var(--blue);">Frontend</div>
+      <div class="svc-chip">Next.js 15 <span class="port">:3000</span></div>
+      <div class="svc-chip">React 19</div>
+      <div class="svc-chip">Tailwind CSS 4</div>
+      <div class="svc-chip">@investdojo/api SDK</div>
+    </div>
+    <!-- Python Services -->
+    <div class="arch-layer" style="border-color:var(--green);background:rgba(34,197,94,0.03);">
+      <div class="arch-layer-title" style="color:var(--green);">Python Microservices (FastAPI)</div>
+      <div class="svc-chip">data-svc <span class="port">:8006</span></div>
+      <div class="svc-chip">feature-svc <span class="port">:8001</span></div>
+      <div class="svc-chip">train-svc <span class="port">:8002</span></div>
+      <div class="svc-chip">infer-svc <span class="port">:8003</span></div>
+      <div class="svc-chip">backtest-svc <span class="port">:8004</span></div>
+      <div class="svc-chip">monitor-svc <span class="port">:8005</span></div>
+    </div>
+    <!-- Infra -->
+    <div class="arch-layer" style="border-color:var(--purple);background:rgba(168,85,247,0.03);">
+      <div class="arch-layer-title" style="color:var(--purple);">Infrastructure (Docker)</div>
+      <div class="svc-chip">PostgreSQL 15 <span class="port">:5432</span></div>
+      <div class="svc-chip">PostgREST</div>
+      <div class="svc-chip">GoTrue (Auth)</div>
+      <div class="svc-chip">Kong Gateway <span class="port">:8000</span></div>
+      <div class="svc-chip">Redis <span class="port">:6379</span></div>
+      <div class="svc-chip">MinIO <span class="port">:9000</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ Slide 4: Tech Stack ═══ -->
+<section class="slide" id="stack">
+  <span class="slide-number">04 / 08</span>
+  <div class="label mb-1">TECH STACK</div>
+  <h2>技术选型</h2>
+  <div class="grid-2 mt-3 gap-2">
+    <div class="card">
+      <h3 class="mb-1">前端</h3>
+      <div style="font-size:0.8rem;color:var(--text-sec);line-height:1.8;">
+        <div>Next.js 15 (App Router)</div>
+        <div>React 19 + TypeScript</div>
+        <div>Tailwind CSS 4 · Raycast 设计系统</div>
+        <div>@supabase/ssr · Supabase Auth</div>
+        <div>pnpm + Turborepo monorepo</div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="mb-1">后端</h3>
+      <div style="font-size:0.8rem;color:var(--text-sec);line-height:1.8;">
+        <div>Python 3.12 + FastAPI</div>
+        <div>6 个独立微服务</div>
+        <div>Celery + Redis (异步任务)</div>
+        <div>structlog 结构化日志</div>
+        <div>uv 依赖管理</div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="mb-1">数据库 & 存储</h3>
+      <div style="font-size:0.8rem;color:var(--text-sec);line-height:1.8;">
+        <div>PostgreSQL 15 (自托管 Supabase Lite)</div>
+        <div>42 张表 + 17 年分区表</div>
+        <div>PostgREST API + RLS 行级安全</div>
+        <div>MinIO S3 对象存储</div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="mb-1">量化引擎</h3>
+      <div style="font-size:0.8rem;color:var(--text-sec);line-height:1.8;">
+        <div>DSL 因子公式语言（自研）</div>
+        <div>Pandas 向量化计算引擎</div>
+        <div>LightGBM 模型训练</div>
+        <div>向量化回测引擎</div>
+        <div>BaoStock + AKShare 数据源</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ Slide 5: Data ═══ -->
+<section class="slide" id="data">
+  <span class="slide-number">05 / 08</span>
+  <div class="label mb-1">DATA ASSETS</div>
+  <h2>数据资产</h2>
+  <div class="grid-4 mt-3">
+    <div class="card center">
+      <div class="stat-num blue">5,603,772</div>
+      <div class="stat-label">日 K 线</div>
+      <div style="font-size:0.65rem;color:var(--text-dim);margin-top:0.3rem;">2020-01 ~ 2026-04</div>
+    </div>
+    <div class="card center">
+      <div class="stat-num green">108,144</div>
+      <div class="stat-label">5 分钟 K 线</div>
+      <div style="font-size:0.65rem;color:var(--text-dim);margin-top:0.3rem;">4 场景真实数据</div>
+    </div>
+    <div class="card center">
+      <div class="stat-num" style="color:var(--purple);">5,528</div>
+      <div class="stat-label">A 股覆盖</div>
+      <div style="font-size:0.65rem;color:var(--text-dim);margin-top:0.3rem;">含退市股</div>
+    </div>
+    <div class="card center">
+      <div class="stat-num" style="color:var(--orange);">2,995</div>
+      <div class="stat-label">市场快照</div>
+      <div style="font-size:0.65rem;color:var(--text-dim);margin-top:0.3rem;">2014 ~ 2026</div>
+    </div>
+  </div>
+  <div class="grid-2 mt-2 gap-2">
+    <div class="card">
+      <h3 class="mb-1">数据采集</h3>
+      <div style="font-size:0.8rem;color:var(--text-sec);line-height:1.8;">
+        <div>BaoStock: 股票代码、日K、5mK、基本面</div>
+        <div>AKShare: 北向资金、行业资金流</div>
+        <div>断点续传 + 自动重试</div>
+        <div>增量更新脚本（每日 17:00）</div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="mb-1">场景数据</h3>
+      <div style="font-size:0.8rem;color:var(--text-sec);line-height:1.8;">
+        <div>covid_2020 — 新冠熔断</div>
+        <div>new_energy_2020 — 新能源牛市</div>
+        <div>crisis_2022 — 多重冲击</div>
+        <div>ai_boom_2023 — AI 概念疯牛</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ Slide 6: Modules ═══ -->
+<section class="slide" id="modules">
+  <span class="slide-number">06 / 08</span>
+  <div class="label mb-1">MODULE STATUS</div>
+  <h2>模块进度</h2>
+  <div class="flex-col mt-3 gap-2" style="max-width:800px;">
+
+    <div class="label" style="color:var(--green);">后端服务</div>
+    <div class="card" style="display:flex;align-items:center;gap:1rem;">
+      <span class="dot dot-green"></span>
+      <span style="min-width:110px;font-weight:600;font-size:0.85rem;">data-svc</span>
+      <span style="flex:1;font-size:0.75rem;color:var(--text-dim);">数据 API + 管理后台</span>
+      <div class="bar-bg" style="width:120px;"><div class="bar-fill bar-green" style="width:100%;"></div></div>
+      <span class="mono" style="font-size:0.7rem;color:var(--text-dim);width:36px;text-align:right;">100%</span>
+    </div>
+    <div class="card" style="display:flex;align-items:center;gap:1rem;">
+      <span class="dot dot-blue"></span>
+      <span style="min-width:110px;font-weight:600;font-size:0.85rem;">feature-svc</span>
+      <span style="flex:1;font-size:0.75rem;color:var(--text-dim);">因子库 · DSL · 计算引擎</span>
+      <div class="bar-bg" style="width:120px;"><div class="bar-fill bar-blue" style="width:75%;"></div></div>
+      <span class="mono" style="font-size:0.7rem;color:var(--text-dim);width:36px;text-align:right;">75%</span>
+    </div>
+    <div class="card" style="display:flex;align-items:center;gap:1rem;">
+      <span class="dot dot-yellow"></span>
+      <span style="min-width:110px;font-weight:600;font-size:0.85rem;">train-svc</span>
+      <span style="flex:1;font-size:0.75rem;color:var(--text-dim);">模型训练（骨架完成）</span>
+      <div class="bar-bg" style="width:120px;"><div class="bar-fill bar-yellow" style="width:20%;"></div></div>
+      <span class="mono" style="font-size:0.7rem;color:var(--text-dim);width:36px;text-align:right;">20%</span>
+    </div>
+    <div class="card" style="display:flex;align-items:center;gap:1rem;">
+      <span class="dot dot-yellow"></span>
+      <span style="min-width:110px;font-weight:600;font-size:0.85rem;">backtest-svc</span>
+      <span style="flex:1;font-size:0.75rem;color:var(--text-dim);">回测引擎（骨架完成）</span>
+      <div class="bar-bg" style="width:120px;"><div class="bar-fill bar-yellow" style="width:20%;"></div></div>
+      <span class="mono" style="font-size:0.7rem;color:var(--text-dim);width:36px;text-align:right;">20%</span>
+    </div>
+    <div class="card" style="display:flex;align-items:center;gap:1rem;">
+      <span class="dot dot-green"></span>
+      <span style="min-width:110px;font-weight:600;font-size:0.85rem;">monitor-svc</span>
+      <span style="flex:1;font-size:0.75rem;color:var(--text-dim);">监控 · Prometheus · 健康聚合</span>
+      <div class="bar-bg" style="width:120px;"><div class="bar-fill bar-green" style="width:100%;"></div></div>
+      <span class="mono" style="font-size:0.7rem;color:var(--text-dim);width:36px;text-align:right;">100%</span>
+    </div>
+
+    <div class="label mt-2" style="color:var(--blue);">前端页面</div>
+    <div class="card" style="display:flex;align-items:center;gap:1rem;">
+      <span class="dot dot-green"></span>
+      <span style="min-width:110px;font-weight:600;font-size:0.85rem;">K 线图</span>
+      <span style="flex:1;font-size:0.75rem;color:var(--text-dim);">/kline</span>
+      <span class="badge badge-done">DONE</span>
+    </div>
+    <div class="card" style="display:flex;align-items:center;gap:1rem;">
+      <span class="dot dot-blue"></span>
+      <span style="min-width:110px;font-weight:600;font-size:0.85rem;">因子库</span>
+      <span style="flex:1;font-size:0.75rem;color:var(--text-dim);">/factors · 浏览 / 详情 / 创建 / 发布</span>
+      <span class="badge badge-active">80%</span>
+    </div>
+    <div class="card" style="display:flex;align-items:center;gap:1rem;">
+      <span class="dot dot-yellow"></span>
+      <span style="min-width:110px;font-weight:600;font-size:0.85rem;">历史模拟</span>
+      <span style="flex:1;font-size:0.75rem;color:var(--text-dim);">/simulation · 盲测框架 v1</span>
+      <span class="badge badge-partial">30%</span>
+    </div>
+    <div class="card" style="display:flex;align-items:center;gap:1rem;">
+      <span class="dot dot-green"></span>
+      <span style="min-width:110px;font-weight:600;font-size:0.85rem;">数据管理</span>
+      <span style="flex:1;font-size:0.75rem;color:var(--text-dim);">/admin/data · SQL 查询 / 任务管理</span>
+      <span class="badge badge-done">DONE</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ Slide 7: Progress ═══ -->
+<section class="slide" id="progress">
+  <span class="slide-number">07 / 08</span>
+  <div class="label mb-1">OVERALL PROGRESS</div>
+  <h2>总体进度 <span class="mono blue" style="font-size:0.6em;">43%</span></h2>
+
+  <div class="bar-bg mt-2" style="height:10px;max-width:600px;">
+    <div class="bar-fill bar-blue" style="width:43%;"></div>
+  </div>
+  <div style="font-size:0.75rem;color:var(--text-dim);margin-top:0.5rem;">23 / 53 任务完成</div>
+
+  <div class="grid-3 mt-3">
+    <div class="card"><div style="display:flex;align-items:center;gap:0.5rem;"><span class="dot dot-green"></span><span style="font-size:0.8rem;">Epic 0 基础设施</span></div><div class="bar-bg mt-1"><div class="bar-fill bar-green" style="width:100%;"></div></div><div class="mono dim" style="font-size:0.65rem;margin-top:0.3rem;">4/4</div></div>
+    <div class="card"><div style="display:flex;align-items:center;gap:0.5rem;"><span class="dot dot-green"></span><span style="font-size:0.8rem;">Epic 1 数据层</span></div><div class="bar-bg mt-1"><div class="bar-fill bar-green" style="width:100%;"></div></div><div class="mono dim" style="font-size:0.65rem;margin-top:0.3rem;">7/7</div></div>
+    <div class="card"><div style="display:flex;align-items:center;gap:0.5rem;"><span class="dot dot-green"></span><span style="font-size:0.8rem;">Epic 2 服务骨架</span></div><div class="bar-bg mt-1"><div class="bar-fill bar-green" style="width:100%;"></div></div><div class="mono dim" style="font-size:0.65rem;margin-top:0.3rem;">6/6</div></div>
+    <div class="card"><div style="display:flex;align-items:center;gap:0.5rem;"><span class="dot dot-blue"></span><span style="font-size:0.8rem;">Epic 3 因子库</span></div><div class="bar-bg mt-1"><div class="bar-fill bar-blue" style="width:75%;"></div></div><div class="mono dim" style="font-size:0.65rem;margin-top:0.3rem;">6/8</div></div>
+    <div class="card"><div style="display:flex;align-items:center;gap:0.5rem;"><span class="dot dot-gray"></span><span style="font-size:0.8rem;">Epic 4 训练回测</span></div><div class="bar-bg mt-1"><div class="bar-fill bar-gray" style="width:0%;"></div></div><div class="mono dim" style="font-size:0.65rem;margin-top:0.3rem;">0/7</div></div>
+    <div class="card"><div style="display:flex;align-items:center;gap:0.5rem;"><span class="dot dot-gray"></span><span style="font-size:0.8rem;">Epic 5 模型市场</span></div><div class="bar-bg mt-1"><div class="bar-fill bar-gray" style="width:0%;"></div></div><div class="mono dim" style="font-size:0.65rem;margin-top:0.3rem;">0/5</div></div>
+    <div class="card"><div style="display:flex;align-items:center;gap:0.5rem;"><span class="dot dot-gray"></span><span style="font-size:0.8rem;">Epic 6 会话副驾</span></div><div class="bar-bg mt-1"><div class="bar-fill bar-gray" style="width:0%;"></div></div><div class="mono dim" style="font-size:0.65rem;margin-top:0.3rem;">0/8</div></div>
+    <div class="card"><div style="display:flex;align-items:center;gap:0.5rem;"><span class="dot dot-gray"></span><span style="font-size:0.8rem;">Epic 7 数据闭环</span></div><div class="bar-bg mt-1"><div class="bar-fill bar-gray" style="width:0%;"></div></div><div class="mono dim" style="font-size:0.65rem;margin-top:0.3rem;">0/3</div></div>
+    <div class="card"><div style="display:flex;align-items:center;gap:0.5rem;"><span class="dot dot-gray"></span><span style="font-size:0.8rem;">Epic 8 上线打磨</span></div><div class="bar-bg mt-1"><div class="bar-fill bar-gray" style="width:0%;"></div></div><div class="mono dim" style="font-size:0.65rem;margin-top:0.3rem;">0/5</div></div>
+  </div>
+</section>
+
+<!-- ═══ Slide 8: Roadmap ═══ -->
+<section class="slide" id="roadmap">
+  <span class="slide-number">08 / 08</span>
+  <div class="label mb-1">ROADMAP</div>
+  <h2>里程碑路线图</h2>
+
+  <div class="grid-2 mt-3 gap-2">
+    <div>
+      <div class="flex-col gap-2">
+        <div class="tl-item">
+          <div class="tl-dot" style="background:var(--green);"></div>
+          <div>
+            <div class="tl-date">已完成</div>
+            <div style="font-weight:600;font-size:0.9rem;">M0 · 基础设施 + 数据层</div>
+            <div class="tl-text">Supabase Lite 自托管、560万行数据、6个微服务骨架、TypeScript SDK</div>
+          </div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="background:var(--blue);"></div>
+          <div>
+            <div class="tl-date">进行中</div>
+            <div style="font-weight:600;font-size:0.9rem;">M1 · 因子库上线</div>
+            <div class="tl-text">200 因子可浏览、DSL 公式、实时计算、发布/订阅、数据管理工具</div>
+          </div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="background:#444;"></div>
+          <div>
+            <div class="tl-date">下一步</div>
+            <div style="font-weight:600;font-size:0.9rem;">M2 · 训练与回测</div>
+            <div class="tl-text">一键训练 LightGBM、向量化回测引擎、训练报告页、回测对比</div>
+          </div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="background:#444;"></div>
+          <div>
+            <div class="tl-date">计划中</div>
+            <div style="font-weight:600;font-size:0.9rem;">M3 · AI 副驾 MVP</div>
+            <div class="tl-text">会话编排、时钟推进、实时推理、副驾面板、复盘页</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="card" style="height:100%;">
+        <h3 class="mb-2">MVP 交付目标</h3>
+        <div style="font-size:0.8rem;color:var(--text-sec);line-height:2;">
+          <div>✅ 200+ 因子可浏览、可搜索</div>
+          <div>✅ 因子详情页 + 历史表现</div>
+          <div>⬜ 一键训练 → 10 分钟出报告</div>
+          <div>⬜ 回测 → 净值曲线 + 指标</div>
+          <div>⬜ 官方模型"动量追踪者"</div>
+          <div>⬜ 盲测 + AI 副驾实时信号</div>
+          <div>⬜ 会话复盘 + 事件时间线</div>
+          <div>⬜ 端到端测试 + 性能优化</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>
