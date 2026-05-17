@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { KLineChart, type TimeFrame } from "@investdojo/ui/charts";
-import type { KLine } from "@investdojo/api";
+import type { KLine, Timeframe } from "@investdojo/api";
 import { sdk } from "@/lib/sdk";
 import { MainNav } from "@/components/MainNav";
 import { useFavoriteFactors } from "@/hooks/useFavoriteFactors";
@@ -81,7 +81,7 @@ function aggregate5mTo(klines: KLine[], targetTf: TimeFrame): KLine[] {
     if (bars.length === 0) continue;
     result.push({
       symbol: bars[0].symbol,
-      timeframe: targetTf as string,
+      timeframe: targetTf as Timeframe,
       dt: bars[0].dt,
       open: bars[0].open,
       high: Math.max(...bars.map((b) => b.high)),
@@ -321,7 +321,8 @@ function KlinePageInner() {
         ) : chartKlines.length > 0 ? (
           <div className="border border-[#1a1a1a] rounded-lg overflow-hidden bg-[#0a0a0a]">
             <KLineChart
-              klines={chartKlines}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              klines={chartKlines as any}
               height={560}
               timeFrame={timeframe}
               availableTimeFrames={availableTimeFrames}

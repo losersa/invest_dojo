@@ -98,7 +98,7 @@ export interface FactorHistoryLong {
     factor_id: string;
     output_type: string;
     rows: number;
-    status: "ok" | "not_computed";
+    status: "ok" | "not_computed" | "computed_realtime" | "no_data";
   };
 }
 
@@ -111,7 +111,7 @@ export interface FactorHistoryWide {
     factor_id: string;
     output_type: string;
     dates: number;
-    status: "ok" | "not_computed";
+    status: "ok" | "not_computed" | "computed_realtime" | "no_data";
   };
 }
 

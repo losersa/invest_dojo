@@ -121,6 +121,8 @@ export function FactorDetailPage({ factorId }: { factorId: string }) {
             data: rows ?? [],
             meta: {
               factor_id: factor.id,
+              output_type: factor.output_type ?? "scalar",
+              rows: rows?.length ?? 0,
               status: rows && rows.length > 0 ? "computed_realtime" : "no_data",
               ...(computeRes.meta ?? {}),
             },

@@ -67,14 +67,14 @@ export function useFavoriteFactors() {
     if (memoryFavorites.includes(factorId)) return;
     setFavorites([...memoryFavorites, factorId]);
     if (userId) {
-      await supabase.from("user_factor_favorites").insert({ user_id: userId, factor_id: factorId }).catch(() => {});
+      try { await supabase.from("user_factor_favorites").insert({ user_id: userId, factor_id: factorId }); } catch { /* ignore */ }
     }
   }, [userId, supabase]);
 
   const removeFavorite = useCallback(async (factorId: string) => {
     setFavorites(memoryFavorites.filter((id) => id !== factorId));
     if (userId) {
-      await supabase.from("user_factor_favorites").delete().eq("user_id", userId).eq("factor_id", factorId).catch(() => {});
+      try { await supabase.from("user_factor_favorites").delete().eq("user_id", userId).eq("factor_id", factorId); } catch { /* ignore */ }
     }
   }, [userId, supabase]);
 

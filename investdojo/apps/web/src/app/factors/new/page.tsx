@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { sdk, ensureUserId } from "@/lib/sdk";
 import { MainNav } from "@/components/MainNav";
+import type { FactorCategory } from "@investdojo/api";
 
 const CATEGORIES = [
   { value: "technical", label: "技术面", icon: "📈" },
@@ -265,7 +266,7 @@ export default function NewFactorPage() {
         name: name.trim(),
         name_en: nameEn.trim() || undefined,
         description: description.trim() || undefined,
-        category,
+        category: category as FactorCategory,
         tags,
         formula: formula.trim(),
         formula_type: "dsl",
