@@ -3,7 +3,7 @@
     { "id": 0, "name": "基础设施", "done": 4, "total": 4, "status": "done" },
     { "id": 1, "name": "数据层与采集", "done": 7, "total": 7, "status": "done" },
     { "id": 2, "name": "Python 服务骨架", "done": 6, "total": 6, "status": "done" },
-    { "id": 3, "name": "因子库", "done": 6, "total": 8, "status": "active" },
+    { "id": 3, "name": "因子库", "done": 7, "total": 8, "status": "active" },
     { "id": 4, "name": "模型训练与回测", "done": 0, "total": 7, "status": "todo" },
     { "id": 5, "name": "模型市场 + 官方模型", "done": 0, "total": 5, "status": "todo" },
     { "id": 6, "name": "会话编排与副驾", "done": 0, "total": 8, "status": "todo" },
@@ -141,14 +141,14 @@
       "name": "因子库",
       "layer": "frontend",
       "status": "active",
-      "progress": 80,
+      "progress": 90,
       "desc": "/factors · 因子浏览与管理",
       "details": [
         "分类筛选 + 搜索 + 排序（完成）",
         "因子详情 + 历史图表（完成）",
         "创建 / 编辑 / 发布 / 撤销（完成）",
         "我的因子 vs 社区因子（完成）",
-        "因子对比（未开始）"
+        "因子对比 /factors/compare（完成）"
       ]
     },
     {
@@ -255,6 +255,15 @@
       "date": "2026-05-31",
       "highlights": [
         {
+          "title": "因子对比功能（Epic 3）",
+          "items": [
+            "新建 /factors/compare 页面：因子多选（2~10 个）+ 时间窗/指标工具条",
+            "对比结果表格：触发次数/触发率/均值，按 winner_by_metric 高亮各指标冠军",
+            "对接 SDK compareFactors（基于 feature_values 缓存聚合）",
+            "因子库 Hero 区新增「因子对比」入口，空缓存因子友好降级提示"
+          ]
+        },
+        {
           "title": "CI 全面修复（Node + Python）",
           "items": [
             "修复 Node build：sql/page.tsx headers 类型、overview reduce 累加器、factor.ts status 类型扩展",
@@ -282,6 +291,9 @@
         }
       ],
       "files": [
+        "apps/web/src/app/factors/compare/page.tsx",
+        "apps/web/src/app/factors/compare/FactorComparePage.tsx",
+        "apps/web/src/app/factors/FactorsPage.tsx",
         "investdojo-overview.html",
         "apps/web/src/app/overview/page.tsx",
         "apps/web/src/app/admin/progress/progress-data.json",
@@ -290,7 +302,7 @@
         "start-dev.ps1",
         "stop-dev.ps1"
       ],
-      "status": "CI 绿灯，开发环境一键启动，项目全景可对外展示"
+      "status": "CI 绿灯，因子对比上线（Epic 3 → 7/8），开发环境一键启动"
     },
     {
       "date": "2026-05-17",

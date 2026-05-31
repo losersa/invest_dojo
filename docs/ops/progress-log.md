@@ -11,6 +11,11 @@
 
 ### 主要进展
 
+- **因子对比功能（Epic 3）**
+  - 新建 `/factors/compare` 页面：因子多选（2~10 个）+ 时间窗/指标工具条
+  - 对比结果表格：触发次数/触发率/均值，按 `winner_by_metric` 高亮各指标冠军
+  - 对接 SDK `compareFactors`（基于 `feature_values` 缓存聚合）
+  - 因子库 Hero 区新增「因子对比」入口，空缓存因子友好降级提示
 - **CI 全面修复（Node + Python）**
   - 修复 Node build：`sql/page.tsx` headers 类型、`overview` reduce 累加器、`factor.ts` status 类型扩展
   - 修复 5 个跨包类型错误（FactorCategory / Timeframe / KLine / Supabase v2 链式调用）

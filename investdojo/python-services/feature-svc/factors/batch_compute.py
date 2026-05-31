@@ -234,6 +234,17 @@ def _upsert_records(records: list[dict], chunk_size: int = 1000) -> int:
     """
     if not records:
         return 0
+
+    # 去重：同一 (factor_id, symbol, date) 只保留最后一条。
+    # 否则同一 upsert chunk 内出现重复键会触发 PostgreSQL：
+    #   "ON CONFLICT DO UPDATE command cannot affect row a second time"
+    # → PostgREST 返回 500，整批后续 chunk 全部中止丢数据。
+    # （重复来源：5m→1d 聚合或同名 symbol 可能产生同一 (factor,symbol,date)）
+    deduped: dict[tuple[Any, Any, Any], dict] = {}
+    for r in records:
+        deduped[(r["factor_id"], r["symbol"], r["date"])] = r
+    records = list(deduped.values())
+
     client = get_supabase_client()
     total = 0
     for i in range(0, len(records), chunk_size):

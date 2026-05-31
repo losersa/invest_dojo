@@ -160,12 +160,20 @@ export function FactorsPage() {
         <p className="mt-3 text-body-lg text-rc-text-secondary max-w-[640px] mx-auto">
           {total > 0 ? `${total} 个` : "200+"} 可计算因子 · 技术面 / 基本面 / 估值 / 成长 / 情绪全覆盖
         </p>
-        <Link
-          href="/factors/new"
-          className="inline-block mt-4 bg-white text-black px-5 py-2 rounded-[8px] text-[14px] font-medium hover:bg-[#ddd] transition"
-        >
-          + 创建自定义因子
-        </Link>
+        <div className="mt-4 flex items-center justify-center gap-3">
+          <Link
+            href="/factors/new"
+            className="inline-block bg-white text-black px-5 py-2 rounded-[8px] text-[14px] font-medium hover:bg-[#ddd] transition"
+          >
+            + 创建自定义因子
+          </Link>
+          <Link
+            href="/factors/compare"
+            className="inline-block bg-rc-surface-input border border-rc-border-input text-rc-text-primary px-5 py-2 rounded-[8px] text-[14px] font-medium hover:border-rc-blue hover:text-rc-blue transition"
+          >
+            ⚖ 因子对比
+          </Link>
+        </div>
       </section>
 
       {/* Main */}
