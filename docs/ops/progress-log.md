@@ -7,6 +7,40 @@
 
 ---
 
+## 2026-05-31
+
+### 主要进展
+
+- **CI 全面修复（Node + Python）**
+  - 修复 Node build：`sql/page.tsx` headers 类型、`overview` reduce 累加器、`factor.ts` status 类型扩展
+  - 修复 5 个跨包类型错误（FactorCategory / Timeframe / KLine / Supabase v2 链式调用）
+  - 补充 `@types/node` 到 `packages/api` 并更新 `pnpm-lock.yaml`
+  - 修复 Python ruff：`admin.py` 的 E402/I001/B904，`factors.py` 未用 import，`celery_worker.py` import 排序
+- **项目全景展示**
+  - 新建 `investdojo-overview.html` 项目全景 PPT（8 张全屏 Slide）
+  - 转为 `/overview` 网页端路由（公开访问，键盘导航 + 滚动监听）
+  - Epic 进度从 `progress-data.json` 联动渲染
+- **开发工具链完善**
+  - Skill 新增进度同步能力（`sync_progress.ps1` + SKILL.md 工作流）
+  - 新建 `start-dev.ps1` / `stop-dev.ps1` 一键启动/停止脚本
+  - 修复脚本 UTF-8 BOM 编码问题（中文导致 PowerShell 解析报错）
+  - 修复前端启动：`pnpm` 是 `.cmd` 须经 `cmd /c` 调用，否则 `Start-Process` 闪退
+
+### 涉及文件
+
+- `investdojo-overview.html`
+- `apps/web/src/app/overview/page.tsx`
+- `apps/web/src/app/admin/progress/progress-data.json`
+- `packages/api/src/types/factor.ts`
+- `.codebuddy/skills/investdojo-dev/scripts/sync_progress.ps1`
+- `start-dev.ps1` / `stop-dev.ps1`
+
+### 状态
+
+CI 绿灯，开发环境一键启动，项目全景可对外展示。
+
+---
+
 ## 2026-05-17
 
 ### 主要进展
