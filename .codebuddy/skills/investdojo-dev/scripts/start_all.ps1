@@ -17,12 +17,24 @@ param(
     [switch]$SkipFrontend
 )
 
-$ROOT = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-# $ROOT should be e:\project\ownproject\invest_dojo\investdojo
-# Adjust if skill is under .codebuddy at project root level
-$INVESTDOJO = Join-Path $ROOT "investdojo"
-if (-not (Test-Path (Join-Path $INVESTDOJO "package.json"))) {
-    $INVESTDOJO = $ROOT
+# 从脚本位置向上查找包含 python-services 的 investdojo 根目录
+$INVESTDOJO = $null
+$dir = $PSScriptRoot
+while ($dir) {
+    if (Test-Path (Join-Path $dir "python-services")) {
+        $INVESTDOJO = $dir
+        break
+    }
+    $dir = Split-Path -Parent $dir
+}
+# 兜底：尝试常见相对布局
+if (-not $INVESTDOJO) {
+    $candidate = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))) "investdojo"
+    if (Test-Path (Join-Path $candidate "python-services")) { $INVESTDOJO = $candidate }
+}
+if (-not $INVESTDOJO) {
+    Write-Host "[ERROR] Cannot locate investdojo directory (python-services not found)." -ForegroundColor Red
+    exit 1
 }
 
 Write-Host "`n====== InvestDojo Dev Startup ======" -ForegroundColor Cyan
@@ -75,8 +87,11 @@ if (-not $SkipPython) {
     Write-Host "`n[2/3] Starting Python microservices..." -ForegroundColor Yellow
     $pySvc = Join-Path $INVESTDOJO "python-services"
     if (Test-Path $pySvc) {
-        Push-Location $pySvc
-        $env:PYTHONPATH = "."
+        # 优先使用 .venv 中的 Python（依赖已安装），否则回退系统 python
+        $venvPy = Join-Path $pySvc ".venv\Scripts\python.exe"
+        $py = if (Test-Path $venvPy) { $venvPy } else { "python" }
+        $env:PYTHONPATH = $pySvc
+        $env:PG_PASSWORD = "x5bVrnMv9g3cpKUDPtfGX1mJ"
 
         $svcList = @(
             @{ Dir = "data-svc";     Port = 8006 },
@@ -88,11 +103,12 @@ if (-not $SkipPython) {
         )
 
         foreach ($svc in $svcList) {
-            $proc = Start-Process -FilePath "python" -ArgumentList "-m", "uvicorn", "main:app", "--app-dir", $svc.Dir, "--host", "0.0.0.0", "--port", $svc.Port, "--reload" -PassThru -WindowStyle Hidden
-            Write-Host "  Started $($svc.Dir) :$($svc.Port) (PID: $($proc.Id))" -ForegroundColor Green
+            $workdir = $pySvc
+            $logOut = Join-Path $pySvc "$($svc.Dir).out.log"
+            $logErr = Join-Path $pySvc "$($svc.Dir).err.log"
+            $proc = Start-Process -FilePath $py -ArgumentList "-m", "uvicorn", "main:app", "--app-dir", $svc.Dir, "--host", "0.0.0.0", "--port", $svc.Port, "--reload" -PassThru -WindowStyle Hidden -WorkingDirectory $workdir -RedirectStandardOutput $logOut -RedirectStandardError $logErr
+            Write-Host "  Started $($svc.Dir) :$($svc.Port) (PID: $($proc.Id)) log=$logOut" -ForegroundColor Green
         }
-
-        Pop-Location
     } else {
         Write-Host "  [WARN] python-services directory not found" -ForegroundColor Red
     }
@@ -103,10 +119,10 @@ if (-not $SkipPython) {
 # ── Step 3: Frontend ──
 if (-not $SkipFrontend) {
     Write-Host "`n[3/3] Starting Next.js frontend..." -ForegroundColor Yellow
-    Push-Location $INVESTDOJO
-    $proc = Start-Process -FilePath "pnpm" -ArgumentList "dev" -PassThru -WindowStyle Minimized
-    Write-Host "  Next.js started (PID: $($proc.Id))" -ForegroundColor Green
-    Pop-Location
+    # pnpm 是 .cmd，必须经由 cmd /c 调用，否则 Start-Process 会误启动（甚至打开 Notepad）
+    $feLog = Join-Path $INVESTDOJO "fe.log"
+    $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "pnpm dev > `"$feLog`" 2>&1" -PassThru -WindowStyle Hidden -WorkingDirectory $INVESTDOJO
+    Write-Host "  Next.js starting (PID: $($proc.Id)) log=$feLog" -ForegroundColor Green
 } else {
     Write-Host "`n[3/3] Skipping frontend (--SkipFrontend)" -ForegroundColor DarkGray
 }

@@ -191,6 +191,18 @@ docker exec -it investdojo-db psql -U postgres -d postgres -c "SELECT count(*) F
 
 如果测试发现 bug，**立即修复**（分配给对应角色），修复后重新运行失败的测试直到通过。
 
+### 第六阶段：同步进度文档（强制）
+
+每次开发任务完成并通过测试后，**必须同步项目进度**，保证进度文档不滞后：
+
+1. 更新数据源 `investdojo/apps/web/src/app/admin/progress/progress-data.json`
+   - 快速追加：`powershell -File "<skill_base>/scripts/sync_progress.ps1" -Title "..." -Items "项1,项2" -Status "..." -Files "..."`
+   - 或直接编辑 Epic/模块进度字段
+2. `sync_progress.ps1` 写入 JSON 后会**自动调用 `generate_progress_doc.ps1`**，重新生成可读文档 `investdojo/docs/ops/progress-log.md`
+3. 提交时一并提交 `progress-data.json` 与 `progress-log.md`（两者须保持同步）
+
+> 禁止「只改代码不更新进度」：进度文档是对外展示（`/admin/progress`、`/overview`）与团队协作的单一事实来源。
+
 ## 核心工作流
 
 ### 1. 启动全栈开发环境
@@ -313,17 +325,18 @@ python ../scripts/update_market_snapshots.py
 - 完整目录结构和服务映射
 - 端口清单（3000, 5432, 6379, 8000~8006, 9000~9001）
 - 凭据信息
-- 网络架构（Windows 192.168.1.3 局域网）
+- 网络架构（localhost / 局域网，IP 会变动，统一用 localhost）
 - 数据库表结构
 - SDK 架构和认证流程
 
 ### 8. 同步项目进度
 
-每次开发任务完成后，更新项目进度数据。
+每次开发任务完成后，**必须**同步项目进度，保证进度不滞后。
 
 **唯一数据源**: `investdojo/apps/web/src/app/admin/progress/progress-data.json`
+（同时驱动 `/admin/progress` 页面与 `/overview` 全景页，请勿直接改页面代码）
 
-**方式 1: 脚本同步**（快速追加今日进展）
+**方式 1: 脚本同步（推荐，自动连带生成文档）**
 
 ```powershell
 powershell -File "<skill_base>/scripts/sync_progress.ps1" `
@@ -332,24 +345,28 @@ powershell -File "<skill_base>/scripts/sync_progress.ps1" `
   -Status "因子库趋于完善" `
   -Files "feature-svc/routers/factors.py,apps/web/src/app/factors/"
 ```
+`sync_progress.ps1` 写入 JSON 后会**自动调用 `generate_progress_doc.ps1`**，重新生成 `investdojo/docs/ops/progress-log.md`。
 
-**方式 2: 直接编辑 JSON**（更灵活，适合更新 Epic/模块进度）
+**方式 2: 仅重新生成文档**（JSON 已手动改好时）
 
-编辑 `progress-data.json`，修改对应字段：
+```powershell
+powershell -File "<skill_base>/scripts/generate_progress_doc.ps1"
+```
+
+**方式 3: 直接编辑 JSON**（更灵活，适合更新 Epic/模块进度）
+
 - `epics[].done` — 更新 Epic 完成任务数
 - `modules[].progress` / `modules[].status` — 更新模块进度百分比和状态
 - `modules[].details` — 更新子项完成情况（用"完成"/"未开始"后缀标记）
 - `log[]` — 在数组头部插入新的每日进展条目
 
-**页面自动渲染**: `/admin/progress` 页面直接 import 该 JSON，无需手动更新页面代码。
-
-**关联文档**: `docs/ops/progress-log.md` 作为可读备份（可选同步）。
+**两文件须同步提交**：`progress-data.json`（数据源）+ `docs/ops/progress-log.md`（可读文档，由脚本从 JSON 生成，勿手改）。
 
 ## 常见问题排障
 
 ### CORS 错误
 Kong 配置文件: `investdojo/infra/supabase-lite/config/kong.yml`
-确认 `Access-Control-Allow-Origin` 包含前端地址（如 `http://192.168.1.3:3000`）。
+确认 `Access-Control-Allow-Origin` 包含前端地址（如 `http://localhost:3000`）。
 修改后重启 Kong: `docker restart investdojo-kong`
 
 ### PostgREST 401/403
@@ -363,7 +380,7 @@ Kong 配置文件: `investdojo/infra/supabase-lite/config/kong.yml`
 3. 确认端口未被占用: `netstat -ano | findstr :<port>`
 
 ### 前端看不到数据
-1. 确认 `apps/web/.env.local` 中 URL 使用正确 IP（`192.168.1.3` 或 `localhost`）
+1. 确认 `apps/web/.env.local` 中 URL 使用 `localhost`（IP 会变动，不要用硬编码局域网 IP）
 2. 浏览器控制台检查网络请求
 3. 确认 Python 服务正在运行
 
@@ -373,7 +390,7 @@ Kong 配置文件: `investdojo/infra/supabase-lite/config/kong.yml`
 
 ## 重要约定
 
-- **IP 地址**: 前端环境变量使用 `192.168.1.3`（Windows LAN IP），Python 服务使用 `localhost`
+- **IP 地址**: 前端与 Python 服务统一使用 `localhost`（本机 IP 为 DHCP 分配会变动，硬编码局域网 IP 会导致连接失败）
 - **data-svc 端口**: 8006（非 8000，避免与 Kong 冲突）
 - **PYTHONPATH**: Python 脚本运行时必须设置 `$env:PYTHONPATH = "."`
 - **pnpm**: 使用 pnpm 9+，不要用 npm/yarn

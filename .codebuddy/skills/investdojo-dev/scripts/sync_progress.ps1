@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   同步项目进度数据到 progress-data.json
 .DESCRIPTION
@@ -16,12 +16,21 @@ param(
     [string]$DataFile = ""
 )
 
-# 定位 progress-data.json
+# 定位 progress-data.json（向上查找，避免硬编码布局）
+function Find-ProgressData {
+    param([string]$StartDir)
+    $dir = $StartDir
+    while ($dir) {
+        $candidate = Join-Path $dir "investdojo\apps\web\src\app\admin\progress\progress-data.json"
+        if (Test-Path $candidate) { return $candidate }
+        $dir = Split-Path -Parent $dir
+    }
+    return $null
+}
+
 if (-not $DataFile) {
     $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-    # 从 skill scripts/ 回溯到项目根
-    $projectRoot = (Get-Item $scriptDir).Parent.Parent.Parent.FullName
-    $DataFile = Join-Path $projectRoot "investdojo\apps\web\src\app\admin\progress\progress-data.json"
+    $DataFile = Find-ProgressData $scriptDir
 }
 
 if (-not (Test-Path $DataFile)) {
@@ -122,3 +131,13 @@ $json = $data | ConvertTo-Json -Depth 10
 Write-Host ""
 Write-Host "[OK] 进度已同步到 $DataFile" -ForegroundColor Green
 Write-Host "页面将在下次构建/刷新时自动更新。" -ForegroundColor DarkGray
+
+# ── 同步生成可读进度文档 ──
+$genScript = Join-Path $scriptDir "generate_progress_doc.ps1"
+if (Test-Path $genScript) {
+    Write-Host ""
+    Write-Host "正在同步进度文档..." -ForegroundColor DarkGray
+    & $genScript
+} else {
+    Write-Host "[WARN] 找不到 generate_progress_doc.ps1，跳过文档生成" -ForegroundColor Yellow
+}
