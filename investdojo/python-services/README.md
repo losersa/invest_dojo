@@ -20,7 +20,7 @@ python-services/
 ├── common/                 ← 共享库（所有服务 import）
 │   ├── config.py           · pydantic-settings 统一配置
 │   ├── logging.py          · structlog 结构化日志
-│   ├── supabase_client.py  · Supabase REST 客户端（含分页修复）
+│   ├── supabase_client.py  · 直连 PostgreSQL 客户端（兼容原 SupabaseClient 接口）
 │   ├── redis_client.py     · Redis sync/async 客户端 + Key 约定
 │   ├── minio_client.py     · MinIO S3 客户端 + 路径约定
 │   └── app.py              · FastAPI 工厂 + /health /metrics 底座
@@ -49,7 +49,7 @@ python-services/
 - uv（`brew install uv`）
 - overmind（`brew install overmind`）
 - Docker 运行时（OrbStack / Docker Desktop）
-- 基础设施已启动：`cd ../infra && ./scripts/dev-up.sh`
+- 基础设施已启动：`cd ../infra/supabase-lite && ./scripts/up.sh`（或 Windows 跑 start_all.ps1）
 
 ### 首次设置
 
@@ -217,7 +217,7 @@ curl -s http://localhost:8001/health/ready | python3 -m json.tool
 ```
 
 修复：
-- Redis/MinIO 不通 → `cd ../infra && ./scripts/dev-status.sh`
+- Redis/MinIO 不通 → `cd ../infra/supabase-lite && ./scripts/up.sh` 或 `cd ../infra && ./scripts/dev-status.sh`
 - Supabase 不通 → 检查 `.env` 中的 `SUPABASE_SERVICE_ROLE_KEY`
 
 ### 端口被占用

@@ -723,16 +723,11 @@ async def update_factor(
 
     patch["updated_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
-    import httpx as _httpx  # noqa: PLC0415
-
-    url = f"{client.url}/rest/v1/factor_definitions?id=eq.{factor_id}"
-    resp = client._http.patch(url, json=patch, headers={"Prefer": "return=representation"})
-    try:
-        resp.raise_for_status()
-    except _httpx.HTTPStatusError as e:
-        logger.error("factor.update.db_failed", factor_id=factor_id, body=resp.text[:200])
-        raise api_error("DB_ERROR", f"Update failed: {e}", status=500) from e
-    updated_rows = resp.json()
+    updated_rows = client.update(
+        "factor_definitions",
+        patch,
+        filters={"id": f"eq.{factor_id}"},
+    )
     if not updated_rows:
         raise api_error(ErrorCode.FACTOR_NOT_FOUND, "After update, row not found", status=404)
     return {"data": _factor_row_to_api(updated_rows[0])}
@@ -785,13 +780,11 @@ async def delete_factor(
 
     if values:
         # 软删：标记 deprecated_at
-
-        url = f"{client.url}/rest/v1/factor_definitions?id=eq.{factor_id}"
-        resp = client._http.patch(
-            url,
-            json={"deprecated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z"},
+        client.update(
+            "factor_definitions",
+            {"deprecated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z"},
+            filters={"id": f"eq.{factor_id}"},
         )
-        resp.raise_for_status()
         logger.info("factor.soft_delete", factor_id=factor_id, reason="has_feature_values")
     else:
         # 硬删
@@ -876,10 +869,11 @@ async def publish_factor(
     if payload.get("long_description"):
         patch["long_description"] = payload["long_description"]
 
-    url = f"{client.url}/rest/v1/factor_definitions?id=eq.{factor_id}"
-    resp = client._http.patch(url, json=patch, headers={"Prefer": "return=representation"})
-    resp.raise_for_status()
-    updated = resp.json()
+    updated = client.update(
+        "factor_definitions",
+        patch,
+        filters={"id": f"eq.{factor_id}"},
+    )
 
     # 异步回填最近 90 天因子值（不阻塞响应）
     background_tasks.add_task(_backfill_factor_async, factor_id)
@@ -918,15 +912,15 @@ async def unpublish_factor(
         "visibility": "private",
         "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
     }
-    url = f"{client.url}/rest/v1/factor_definitions?id=eq.{factor_id}"
-    resp = client._http.patch(url, json=patch, headers={"Prefer": "return=representation"})
-    resp.raise_for_status()
-    updated = resp.json()
+    updated = client.update(
+        "factor_definitions",
+        patch,
+        filters={"id": f"eq.{factor_id}"},
+    )
 
     # 清理该因子的 feature_values 缓存（私有因子不需要占用存储）
     try:
-        del_url = f"{client.url}/rest/v1/feature_values?factor_id=eq.{factor_id}"
-        client._http.delete(del_url)
+        client.delete("feature_values", filters={"factor_id": f"eq.{factor_id}"})
         logger.info("factor.cache_cleared", factor_id=factor_id)
     except Exception as exc:
         logger.warning("factor.cache_clear_failed", factor_id=factor_id, error=str(exc))

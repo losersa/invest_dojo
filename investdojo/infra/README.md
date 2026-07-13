@@ -3,8 +3,11 @@
 > 对应任务：[T-0.01](../docs/product/99_MVP_Sprint0.md#t-001---docker-compose-基础设施)
 > 对应架构文档：[架构 §9](../docs/architecture/00_系统总览.md#9-开发环境与工作流)
 
-本目录包含 InvestDojo 本地开发所需的基础设施：**Redis + MinIO**。
-通过 Docker Compose 一键启停。
+本目录是 InvestDojo 本地开发基础设施的归属地。全部 6 个容器
+（**Postgres + PostgREST + GoTrue + Kong + Redis + MinIO**）已合并到
+**单一** Docker Compose 文件：`supabase-lite/docker-compose.yml`。
+通过 `supabase-lite/scripts/up.sh`（Mac/Linux）或
+`.codebuddy/skills/investdojo-dev/scripts/start_all.ps1`（Windows）一键启停。
 
 ---
 
@@ -12,16 +15,15 @@
 
 ```
 infra/
-├── docker-compose.yml    ← 服务定义（Redis + MinIO）
-├── .env.example          ← 环境变量模板
-├── .gitignore            ← 不提交数据目录
-├── scripts/
-│   ├── dev-up.sh         ← 启动
-│   ├── dev-down.sh       ← 停止
-│   ├── dev-reset.sh      ← 重置（清数据）
-│   └── dev-status.sh     ← 健康检查
-├── redis-data/           ← Redis 持久化（git 忽略）
-└── minio-data/           ← MinIO 数据（git 忽略）
+├── supabase-lite/
+│   ├── docker-compose.yml    ← 【唯一】服务定义（全部 6 容器）
+│   ├── scripts/up.sh         ← Mac/Linux 启动（就绪 .env + 注入 role 密码）
+│   ├── scripts/up.ps1        ← Windows 启动
+│   ├── init/  config/        ← 初始化 SQL 与配置
+│   └── data/                 ← Postgres 数据（git 忽略）
+├── scripts/                  ← dev-up/down/reset/status（已改为 supabase-lite 的薄包装）
+├── redis-data/               ← Redis 持久化（git 忽略，../redis-data）
+└── minio-data/               ← MinIO 数据（git 忽略，../minio-data）
 ```
 
 ---
@@ -58,10 +60,10 @@ docker compose version    # Docker Compose v2+
 ## 快速开始
 
 ```bash
-# 1. 启动全部服务
-./scripts/dev-up.sh
+# 1. 启动全部服务（单一 compose，含 Postgres/PostgREST/GoTrue/Kong/Redis/MinIO）
+cd supabase-lite && ./scripts/up.sh
 
-# 2. 健康检查
+# 2. 健康检查（薄包装，指向 supabase-lite compose）
 ./scripts/dev-status.sh
 
 # 3. 打开 MinIO 控制台

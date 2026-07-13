@@ -36,10 +36,19 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO")
     log_format: str = Field(default="pretty", description="pretty/json")
 
-    # ── Supabase ──
+    # ── Supabase（仅前端使用；Python 微服务已改为直连 PostgreSQL）──
     supabase_url: str = Field(default="https://adqznqsciqtepzimcvsg.supabase.co")
     supabase_service_role_key: str = Field(default="", description="服务端 key，绕过 RLS")
     supabase_anon_key: str = Field(default="", description="公开 key，遵守 RLS")
+
+    # ── 直连 PostgreSQL（Python 微服务）──
+    # 与 infra/supabase-lite 的 db 容器共用同一套凭据（POSTGRES_PASSWORD）。
+    # 服务运行在本机，通过 localhost:5432 连接；容器内则用 db:5432。
+    pg_host: str = Field(default="localhost", description="PG 主机（本机 localhost / 容器内 db）")
+    pg_port: int = Field(default=5432)
+    pg_user: str = Field(default="postgres")
+    pg_password: str = Field(default="", description="与 supabase-lite db 的 POSTGRES_PASSWORD 一致")
+    pg_database: str = Field(default="postgres", description="数据库名")
 
     # ── Redis ──
     redis_url: str = Field(default="redis://localhost:6379/0")

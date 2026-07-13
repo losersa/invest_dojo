@@ -14,7 +14,7 @@ import { MainNav } from "@/components/MainNav";
 import { useCurrentUser, isStaff } from "@/hooks/useCurrentUser";
 import Link from "next/link";
 
-const DATA_SVC_URL = process.env.NEXT_PUBLIC_DATA_SVC_URL ?? "http://192.168.1.3:8006";
+const DATA_SVC_URL = process.env.NEXT_PUBLIC_DATA_SVC_URL ?? "http://localhost:8006";
 
 interface Column { name: string; type: string; nullable: boolean; default: string | null }
 interface TableSchema { name: string; columns: Column[]; row_estimate?: number }

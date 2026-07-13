@@ -6,7 +6,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INFRA_DIR="$(dirname "$SCRIPT_DIR")"
-cd "$INFRA_DIR"
+# 基础设施已合并到 supabase-lite/docker-compose.yml（单一编排文件）
+cd "$INFRA_DIR/supabase-lite"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'

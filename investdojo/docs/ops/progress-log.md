@@ -4,6 +4,10 @@
 > `investdojo/apps/web/src/app/admin/progress/progress-data.json`（同时驱动 `/admin/progress` 页面）。
 > 最后更新：**2026-07-13**
 
+## 需求排单（Backlog）
+
+_暂无排单需求。新增需求请用 sync_progress.ps1 -Backlog ... 登记。_
+
 ## 总览
 
 - 总体任务完成度：**24 / 53（45%）**

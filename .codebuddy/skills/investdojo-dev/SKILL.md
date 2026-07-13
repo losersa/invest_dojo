@@ -16,7 +16,7 @@ description: >-
 InvestDojo 是一个量化交易模拟平台，采用 pnpm + Turborepo monorepo 架构：
 - **前端**: Next.js 15 + React 19 + Tailwind CSS 4（`:3000`）
 - **Python 微服务**: 6 个 FastAPI 服务（`:8001`~`:8006`）
-- **基础设施**: PostgreSQL + PostgREST + GoTrue + Kong（Supabase Lite）+ Redis + MinIO
+- **基础设施**: PostgreSQL + PostgREST + GoTrue + Kong（Supabase Lite）+ Redis + MinIO（**全部合并在 `infra/supabase-lite/docker-compose.yml` 单一文件**，一条 `docker compose up -d` 拉起 6 个容器）。Python 微服务已改为**直连 PostgreSQL**（localhost:5432），rest/auth/kong 三个容器仅前端使用。
 
 项目根目录：当前工作区下的 `investdojo/` 子目录。
 
@@ -48,6 +48,23 @@ InvestDojo 是一个量化交易模拟平台，采用 pnpm + Turborepo monorepo 
 |---------|--------|----------|
 | `tester-unit` | 单元测试 | pytest 单元测试、vitest 组件测试 |
 | `tester-e2e` | E2E 测试 | agent-browser 浏览器自动化、API 冒烟测试 |
+
+### 第零阶段：需求 / 任务登记（强制）⭐
+
+**每当你新增一个需求或拆解出一个任务，必须同时做两件事**（避免排单和进度滞后）：
+
+1. **登记排单（backlog）**：把需求/任务写入 `progress-data.json` 的 `backlog` 数组，
+   含 `id` / `title` / `epic` / `priority`(P0|P1|P2) / `status`(todo|doing|done) / `owner` / `created`。
+2. **登记进度（log）**：调用 `sync_progress.ps1 -Backlog "..."` 一步完成上述两件事
+   （脚本同时往 `backlog` 追加条目、并写入当天 `log` 进展）。
+
+示例：
+```powershell
+powershell -File "<skill_base>/scripts/sync_progress.ps1" `
+  -Backlog "因子批量导出 Excel" -BacklogEpic 3 -BacklogPriority P1 -BacklogOwner api-dev
+```
+
+> 禁止「只开发不登记」：backlog 是排期与分工的单一事实来源，进度文档是对外展示来源。
 
 ### 第一阶段：需求拆解与角色分配
 
@@ -220,10 +237,9 @@ powershell -File "<skill_base>/scripts/start_all.ps1"
 
 **手动启动顺序**（当脚本不适用时）：
 
-1. Docker 基础设施：
+1. Docker 基础设施（单一 compose，含全部 6 容器）：
    ```powershell
    cd investdojo/infra/supabase-lite && docker compose up -d
-   cd investdojo/infra && docker compose up -d
    ```
 
 2. Python 微服务：
@@ -375,9 +391,9 @@ Kong 配置文件: `investdojo/infra/supabase-lite/config/kong.yml`
 3. `docker logs investdojo-rest` 查看错误
 
 ### Python 服务连接失败
-1. 确认 `python-services/.env` 中 `SUPABASE_URL=http://localhost:8000`
-2. 确认 Docker 容器正在运行: `docker ps`
-3. 确认端口未被占用: `netstat -ano | findstr :<port>`
+1. 确认 `python-services/.env` 中 `PG_HOST=localhost` / `PG_PORT=5432` / `PG_PASSWORD`（与 supabase-lite db 一致）
+2. 确认 Docker 容器 `investdojo-db` 正在运行且 healthy: `docker ps` / `docker inspect investdojo-db`
+3. 确认端口 5432 未被占用: `netstat -ano | findstr :5432`
 
 ### 前端看不到数据
 1. 确认 `apps/web/.env.local` 中 URL 使用 `localhost`（IP 会变动，不要用硬编码局域网 IP）

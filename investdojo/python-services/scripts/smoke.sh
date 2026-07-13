@@ -37,7 +37,7 @@ echo ""
 # 1. 检查基础设施
 echo -e "${CYAN}[1/4]${NC} 检查基础设施..."
 if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q investdojo-redis; then
-  echo -e "${YELLOW}⚠${NC}  Redis 未运行，请先跑 infra/scripts/dev-up.sh"
+  echo -e "${YELLOW}⚠${NC}  Redis 未运行，请先跑 infra/supabase-lite/scripts/up.sh（或 start_all.ps1）"
   exit 1
 fi
 echo -e "  ${GREEN}✓${NC} Redis / MinIO 就绪"

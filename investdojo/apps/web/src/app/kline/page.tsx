@@ -15,6 +15,10 @@ import { MainNav } from "@/components/MainNav";
 import { useFavoriteFactors } from "@/hooks/useFavoriteFactors";
 import { Suspense } from "react";
 
+// ── 微服务基础地址（本地默认 localhost，可用 .env.local 覆盖）──
+const FEATURE_SVC_URL = process.env.NEXT_PUBLIC_FEATURE_SVC_URL ?? "http://localhost:8001";
+const DATA_SVC_URL = process.env.NEXT_PUBLIC_DATA_SVC_URL ?? "http://localhost:8006";
+
 // ── 工具函数 ──
 
 function dtToBeijingUnix(dt: string): number {
@@ -149,7 +153,7 @@ function KlinePageInner() {
 
   const fetchSymbolName = useCallback(async (code: string) => {
     try {
-      const resp = await fetch(`http://192.168.1.3:8006/api/v1/data/symbols/${code}`);
+      const resp = await fetch(`${DATA_SVC_URL}/api/v1/data/symbols/${code}`);
       if (resp.ok) {
         const data = await resp.json();
         setSymbolName(data.data?.name || "");
@@ -393,7 +397,7 @@ function FavoriteFactorsPanel({ symbol, start, end }: { symbol: string; start: s
 
       for (const factorId of favorites) {
         try {
-          const resp = await fetch(`http://192.168.1.3:8001/api/v1/factors/compute`, {
+          const resp = await fetch(`${FEATURE_SVC_URL}/api/v1/factors/compute`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -408,7 +412,7 @@ function FavoriteFactorsPanel({ symbol, start, end }: { symbol: string; start: s
             const rows = json.data || [];
             const lastRow = rows[rows.length - 1];
             // 获取因子名称
-            const metaResp = await fetch(`http://192.168.1.3:8001/api/v1/factors/${factorId}`);
+            const metaResp = await fetch(`${FEATURE_SVC_URL}/api/v1/factors/${factorId}`);
             const metaJson = metaResp.ok ? await metaResp.json() : null;
             const name = metaJson?.data?.name || factorId;
 

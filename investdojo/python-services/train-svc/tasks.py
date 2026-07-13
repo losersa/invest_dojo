@@ -61,19 +61,14 @@ def _update_job_status(
     if completed:
         patch["completed_at"] = utc_now_iso()
 
-    import httpx
-
-    url = f"{client.url}/rest/v1/training_jobs?job_id=eq.{job_id}"
-    resp = client._http.patch(url, json=patch)
     try:
-        resp.raise_for_status()
-    except httpx.HTTPStatusError as e:
+        client.update("training_jobs", patch, filters={"job_id": f"eq.{job_id}"})
+    except Exception as e:  # noqa: BLE001
         logger.error(
             "train.job.update_failed",
             job_id=job_id,
             status=status,
             error=str(e),
-            body=resp.text[:200],
         )
         raise
 

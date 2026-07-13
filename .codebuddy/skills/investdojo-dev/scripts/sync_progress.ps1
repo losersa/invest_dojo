@@ -13,7 +13,11 @@ param(
     [string]$Items = "",
     [string]$Status = "",
     [string]$Files = "",
-    [string]$DataFile = ""
+    [string]$DataFile = "",
+    [string]$Backlog = "",
+    $BacklogEpic = $null,
+    [string]$BacklogPriority = "P2",
+    [string]$BacklogOwner = ""
 )
 
 # 定位 progress-data.json（向上查找，避免硬编码布局）
@@ -28,8 +32,8 @@ function Find-ProgressData {
     return $null
 }
 
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $DataFile) {
-    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
     $DataFile = Find-ProgressData $scriptDir
 }
 
@@ -46,7 +50,35 @@ $data = Get-Content $DataFile -Raw -Encoding UTF8 | ConvertFrom-Json
 
 $today = Get-Date -Format "yyyy-MM-dd"
 
-if ($Title -and $Items) {
+if ($Backlog) {
+    # 登记排单（backlog）+ 写入今日进展
+    $reqNum = if ($data.backlog) { $data.backlog.Count + 1 } else { 1 }
+    $reqId = "REQ-" + $reqNum.ToString("D3")
+    $bl = @{
+        id = $reqId
+        title = $Backlog
+        epic = if ($BacklogEpic -ne $null -and $BacklogEpic -ne "") { $BacklogEpic } else { $null }
+        priority = if ($BacklogPriority) { $BacklogPriority } else { "P2" }
+        status = "todo"
+        owner = if ($BacklogOwner) { $BacklogOwner } else { "-" }
+        created = $today
+        done = ""
+        note = ""
+    }
+    if (-not $data.backlog) { $data.backlog = @() }
+    $blList = [System.Collections.ArrayList]@($data.backlog)
+    $blList.Add($bl) | Out-Null
+    $data.backlog = $blList.ToArray()
+    Write-Host "[OK] 已登记排单 $reqId : $Backlog" -ForegroundColor Green
+    $newEntry = @{
+        date = $today
+        highlights = @(@{
+            title = "新增需求/任务（登记排单）"
+            items = @($Backlog, "ID: $reqId", "优先级: $($bl.priority)", "负责人: $($bl.owner)")
+        })
+        status = "进展更新"
+    }
+} elseif ($Title -and $Items) {
     # 自动模式：命令行传参
     $itemList = $Items -split "," | ForEach-Object { $_.Trim() }
     $fileList = if ($Files) { $Files -split "," | ForEach-Object { $_.Trim() } } else { @() }

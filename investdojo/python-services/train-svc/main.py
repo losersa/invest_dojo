@@ -202,15 +202,14 @@ async def cancel_training_job(job_id: str):
         )
 
     # 只更新状态；真正终止见 Epic 6
-    url = f"{client.url}/rest/v1/training_jobs?job_id=eq.{job_id}"
-    resp = client._http.patch(
-        url,
-        json={
+    client.update(
+        "training_jobs",
+        {
             "status": STATUS_CANCELLED,
             "completed_at": utc_now_iso(),
         },
+        filters={"job_id": f"eq.{job_id}"},
     )
-    resp.raise_for_status()
     return {"data": {"job_id": job_id, "status": STATUS_CANCELLED}}
 
 

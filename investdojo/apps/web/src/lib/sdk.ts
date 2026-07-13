@@ -49,12 +49,12 @@ export async function ensureUserId(): Promise<string | undefined> {
 
 export const sdk = createInvestDojoClient({
   baseURLs: {
-    data: process.env.NEXT_PUBLIC_DATA_SVC_URL ?? "http://192.168.1.3:8006",
-    feature: process.env.NEXT_PUBLIC_FEATURE_SVC_URL ?? "http://192.168.1.3:8001",
-    train: process.env.NEXT_PUBLIC_TRAIN_SVC_URL ?? "http://192.168.1.3:8002",
-    infer: process.env.NEXT_PUBLIC_INFER_SVC_URL ?? "http://192.168.1.3:8003",
-    backtest: process.env.NEXT_PUBLIC_BACKTEST_SVC_URL ?? "http://192.168.1.3:8004",
-    monitor: process.env.NEXT_PUBLIC_MONITOR_SVC_URL ?? "http://192.168.1.3:8005",
+    data: process.env.NEXT_PUBLIC_DATA_SVC_URL ?? "http://localhost:8006",
+    feature: process.env.NEXT_PUBLIC_FEATURE_SVC_URL ?? "http://localhost:8001",
+    train: process.env.NEXT_PUBLIC_TRAIN_SVC_URL ?? "http://localhost:8002",
+    infer: process.env.NEXT_PUBLIC_INFER_SVC_URL ?? "http://localhost:8003",
+    backtest: process.env.NEXT_PUBLIC_BACKTEST_SVC_URL ?? "http://localhost:8004",
+    monitor: process.env.NEXT_PUBLIC_MONITOR_SVC_URL ?? "http://localhost:8005",
   },
   userId: () => getCurrentUserId(),
   timeoutMs: 15_000,

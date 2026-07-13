@@ -40,28 +40,18 @@ if (-not $INVESTDOJO) {
 Write-Host "`n====== InvestDojo Dev Startup ======" -ForegroundColor Cyan
 Write-Host "Root: $INVESTDOJO`n" -ForegroundColor DarkGray
 
-# ── Step 1: Docker 基础设施 ──
+# ── Step 1: Docker 基础设施（单一编排文件）──
 if (-not $SkipDocker) {
     Write-Host "[1/3] Starting Docker infrastructure..." -ForegroundColor Yellow
 
-    # Supabase Lite
+    # 全部 6 个容器（db/rest/auth/kong + redis/minio）已合并到同一个 compose
     $supabaseLite = Join-Path $INVESTDOJO "infra\supabase-lite"
     if (Test-Path (Join-Path $supabaseLite "docker-compose.yml")) {
-        Write-Host "  Starting Supabase Lite..." -ForegroundColor DarkGray
+        Write-Host "  Starting all infra (Postgres/PostgREST/GoTrue/Kong/Redis/MinIO)..." -ForegroundColor DarkGray
         Push-Location $supabaseLite
         docker compose up -d 2>&1 | Out-Null
         Pop-Location
-        Write-Host "  Supabase Lite started" -ForegroundColor Green
-    }
-
-    # Redis + MinIO
-    $infraDir = Join-Path $INVESTDOJO "infra"
-    if (Test-Path (Join-Path $infraDir "docker-compose.yml")) {
-        Write-Host "  Starting Redis + MinIO..." -ForegroundColor DarkGray
-        Push-Location $infraDir
-        docker compose up -d 2>&1 | Out-Null
-        Pop-Location
-        Write-Host "  Redis + MinIO started" -ForegroundColor Green
+        Write-Host "  Infra started (single docker-compose.yml)" -ForegroundColor Green
     }
 
     # Wait for Postgres
