@@ -331,6 +331,47 @@ class TestErrors:
 
 
 # ═══════════════════════════════════════════════════════════════
+#   Decimal 面板回归（生产环境来自 Postgres numeric → Python Decimal）
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestDecimalPanelRegression:
+    """回归：生产环境面板字段来自 Postgres numeric → Python Decimal。
+    引擎必须在入口统一转 float64，否则 `float 字面量 × Decimal 列`
+    会抛 TypeError（曾真实发生：gap_up / open*1.05 / RSI<30 等因子
+    在 53M 行全量回填中全部失败）。"""
+
+    @pytest.fixture
+    def decimal_panel(self, panel):
+        from decimal import Decimal
+
+        out = {}
+        for k, df in panel.items():
+            dec = df.astype(object)
+            dec = dec.apply(
+                lambda col: col.map(lambda v: Decimal(str(v)) if pd.notna(v) else v)
+            )
+            out[k] = dec
+        return out
+
+    def test_float_scalar_mul_on_decimal(self, decimal_panel):
+        """close > MA(close, 5) * 1.05 —— 曾在 Decimal 面板上抛 TypeError"""
+        result = _evaluate("close > MA(close, 5) * 1.05", decimal_panel)
+        assert isinstance(result, pd.DataFrame)
+        assert result.shape == decimal_panel["close"].shape
+
+    def test_float_scalar_compare_on_decimal(self, decimal_panel):
+        """RSI(14) < 30 —— 标量比较也必须兼容 Decimal"""
+        result = _evaluate("RSI(14) < 30", decimal_panel)
+        assert isinstance(result, pd.DataFrame)
+
+    def test_cross_field_decimal(self, decimal_panel):
+        """open > preclose * 1.02 —— 跨字段 float 乘法 + 比较"""
+        result = _evaluate("open > preclose * 1.02", decimal_panel)
+        assert isinstance(result, pd.DataFrame)
+
+
+# ═══════════════════════════════════════════════════════════════
 #   性能验收（3000 股 × 252 天 < 3s）
 # ═══════════════════════════════════════════════════════════════
 

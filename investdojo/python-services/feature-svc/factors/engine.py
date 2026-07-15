@@ -255,7 +255,15 @@ class Engine:
     """
 
     def __init__(self, panel: Panel) -> None:
-        self.panel = panel
+        # 统一把所有面板列转为 float64。
+        # 生产环境的面板来自 Postgres numeric → Python Decimal，
+        # 而 DSL 字面量是 float，二者直接做算术/比较会抛
+        # "unsupported operand type(s) for *: 'decimal.Decimal' and 'float'"。
+        # 在入口处统一成 float64 可彻底消除该类型不兼容问题。
+        self.panel = {
+            k: (v.astype("float64") if isinstance(v, pd.DataFrame) else v)
+            for k, v in panel.items()
+        }
 
     def eval(self, ast: Node) -> Value:
         """batch 计算：返回完整的 DataFrame"""

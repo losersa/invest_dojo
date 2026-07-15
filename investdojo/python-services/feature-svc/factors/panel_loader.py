@@ -367,6 +367,18 @@ def load_panel(
         # ── 3. 衍生字段 ──
         _compute_derived(panel)
 
+    # ── 4. 统一所有字段的索引（防 open/preclose 等因首日 NULL ──
+    #        导致 pivot 后索引错位，进而两个 DataFrame 比较/算术抛
+    #        "Can only compare identically-labeled DataFrame objects"）
+    #        以最完整的 close 索引为基准，其余字段 reindex（缺失日补 NaN）。
+    if panel:
+        canon_index = panel.get("close")
+        canon_index = canon_index.index if canon_index is not None else next(
+            iter(panel.values())
+        ).index
+        for _k in list(panel.keys()):
+            panel[_k] = panel[_k].reindex(index=canon_index)
+
     logger.info(
         "load_panel.ok",
         symbols=len(symbols),
