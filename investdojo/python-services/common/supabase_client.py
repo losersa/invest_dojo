@@ -305,6 +305,14 @@ class PGClient:
         finally:
             self._put(conn)
 
+    def _adapt_param(self, table: str, col: str, value: Any) -> Any:
+        """根据列类型适配参数：jsonb 列用 psycopg2.extras.Json 序列化。"""
+        if value is None:
+            return None
+        if "jsonb" in self._col_type(table, col).lower():
+            return psycopg2.extras.Json(value)
+        return value
+
     def insert(
         self,
         table: str,
@@ -322,7 +330,7 @@ class PGClient:
         for r in rows:
             value_rows.append("(" + ", ".join(["%s"] * len(cols)) + ")")
             for c in cols:
-                params.append(r[c])
+                params.append(self._adapt_param(table, c, r.get(c)))
 
         col_sql = ", ".join(_ident(c) for c in cols)
         sql = f"INSERT INTO {_ident(table)} ({col_sql}) VALUES {', '.join(value_rows)}"
@@ -363,7 +371,7 @@ class PGClient:
         if not set_cols:
             raise ValueError("update 需要至少一个字段")
         set_sql = ", ".join(f"{_ident(c)} = %s" for c in set_cols)
-        params: list[Any] = list(data.values())
+        params: list[Any] = [self._adapt_param(table, c, data[c]) for c in set_cols]
         where_sql, wparams = self._translate_filter(filters, table)
         params.extend(wparams)
 

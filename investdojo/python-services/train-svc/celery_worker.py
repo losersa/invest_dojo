@@ -29,13 +29,13 @@ from common import celery_app
 # 每日 17:00（Asia/Shanghai）触发增量因子计算。
 # A 股 15:00 收盘，数据源同步到 Supabase 约 16:00，预留缓冲。
 #
-# 启动 Beat：在 Procfile 里的 `feature-beat` 行。
+# 启动 Beat：在 Procfile 里的 `feature-beat` 行，或 start-dev.ps1 自动拉起。
 #
-# ⚠️ 2026-05-01：Supabase Free tier 磁盘 500MB 接近上限，
-#    暂停所有自动写入，等迁移到 NAS 自托管后再恢复。
-#    通过环境变量 ENABLE_DAILY_BEAT=1 可重新启用。
+# 默认开启：2026-05-01 曾因 Supabase Free tier 磁盘 500MB 接近上限而暂停；
+# 现已迁移到自托管 Supabase Lite（Docker），磁盘不再受限，故默认启用。
+# 仍可用环境变量 ENABLE_DAILY_BEAT=0 关闭。
 
-if os.environ.get("ENABLE_DAILY_BEAT", "0") == "1":
+if os.environ.get("ENABLE_DAILY_BEAT", "1") == "1":
     celery_app.conf.beat_schedule = {
         "daily-incremental-factor-compute": {
             "task": "feature.compute_incremental",

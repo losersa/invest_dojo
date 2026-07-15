@@ -33,6 +33,22 @@ foreach ($port in $ports) {
     }
 }
 
+# ── 停掉 Celery worker / beat 进程 ──
+Write-Host "`n停止 Celery 定时任务进程..." -ForegroundColor Yellow
+$celeryProcs = Get-CimInstance Win32_Process -Filter "Name = 'celery.exe'" -ErrorAction SilentlyContinue
+if ($celeryProcs) {
+    foreach ($p in $celeryProcs) {
+        try {
+            Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop
+            Write-Host "  停止 celery (PID: $($p.ProcessId))" -ForegroundColor Green
+        } catch {
+            Write-Host "  [WARN] celery PID $($p.ProcessId) 无法停止" -ForegroundColor Red
+        }
+    }
+} else {
+    Write-Host "  无 celery 进程" -ForegroundColor DarkGray
+}
+
 # ── 可选：停 Docker ──
 if ($StopDocker) {
     Write-Host "`n停止 Docker 容器..." -ForegroundColor Yellow

@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -281,6 +282,7 @@ def compute_and_save(
     symbols: list[str] | None = None,
     batch_size: int = 100,
     dry_run: bool = False,
+    on_progress: "Callable[[int, int, int], None] | None" = None,
 ) -> dict[str, Any]:
     """批量计算因子并写 feature_values
 
@@ -290,6 +292,8 @@ def compute_and_save(
         symbols: 要算的股票，None = symbols 表全部
         batch_size: 每批股票数
         dry_run: True 时只计算不落库
+        on_progress: 可选进度回调 (batches_done, batches_total, records_written)，
+                     每批完成后调用一次，供 CLI/后台任务实时输出进度。
 
     Returns:
         {records_written, factors_computed, batches, errors, duration_sec}
@@ -321,6 +325,7 @@ def compute_and_save(
     total_written = 0
     total_errors: list[dict] = list(parse_failed)
     batches_done = 0
+    batches_total = (len(symbols) + batch_size - 1) // batch_size if symbols else 0
 
     # 3. 分批计算
     for batch_start in range(0, len(symbols), batch_size):
@@ -359,6 +364,11 @@ def compute_and_save(
             total_errors.append({"batch_start": batch_start, "error": str(e)})
 
         batches_done += 1
+        if on_progress is not None:
+            try:
+                on_progress(batches_done, batches_total, total_written)
+            except Exception:  # noqa: BLE001  进度回调不应影响主流程
+                pass
 
     duration = time.perf_counter() - t0
     result = {

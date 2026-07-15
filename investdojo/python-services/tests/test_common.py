@@ -16,9 +16,10 @@ def test_settings_loaded():
     """配置能正常加载"""
     # env 的合法值集合（不硬编码 development，让 CI 可覆盖 test / staging 等）
     assert settings.env in {"development", "test", "staging", "production"}
-    assert settings.supabase_url.startswith("https://")
-    # 支持 data-svc 的 8000 端口（T-1.07 新增）
-    assert 8000 <= settings.feature_svc_port <= 8005
+    # 本地 Kong 网关（迁移到 18080，规避 Windows WinNAT 7981-8480 保留段）
+    assert settings.supabase_url.startswith(("http://", "https://"))
+    # 端口已迁移到 10001-10006（原 8001-8006 被 WinNAT 保留段占用）
+    assert 10001 <= settings.feature_svc_port <= 10006
 
 
 def test_logger():

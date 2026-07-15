@@ -24,9 +24,9 @@
                   {
                       "id":  3,
                       "name":  "因子库",
-                      "done":  7,
+                      "done":  8,
                       "total":  8,
-                      "status":  "active"
+                      "status":  "done"
                   },
                   {
                       "id":  4,
@@ -127,16 +127,16 @@
                     {
                         "name":  "feature-svc",
                         "layer":  "backend",
-                        "status":  "active",
-                        "progress":  75,
-                        "desc":  "因子库服务（:8001）",
+                        "status":  "done",
+                        "progress":  100,
+                        "desc":  "因子库服务（:10001）",
                         "details":  [
                                         "DSL 解析器 + 计算引擎（完成）",
-                                        "63 个 DSL 因子定义（完成）",
+                                        "212 个内置因子定义（完成，达标 200）",
                                         "CRUD + 发布/撤销 + 历史查询（完成）",
                                         "批量回填 + 增量计算（完成）",
-                                        "200 个内置因子（未完成，待补充到 200）",
-                                        "Celery Beat 定时任务（未开始）"
+                                        "200 个内置因子（完成，实际 212 个 platform 因子）",
+                                        "Celery Beat 定时任务（完成，每日 17:00 增量因子回填）"
                                     ]
                     },
                     {
@@ -313,6 +313,42 @@
                 ],
     "backlog":  [],
     "log":  [
+                {
+                    "date":  "2026-07-15",
+                    "status":  "Epic 3 因子库收尾完成（8/8），数据管理后台体验升级",
+                    "highlights":  [
+                                       {
+                                           "title":  "Epic 3 因子库收尾（8/8）",
+                                           "items":  [
+                                                         "内置因子补充至 200+：seed_factors_extended.py 新增系统化 DSL 生成器（均线/EMA/RSI/STD/KDJ/MACD/RANK/布林/量能/基本面/综合等），platform 因子达 212 个",
+                                                         "全部 212 个因子经 DSL 解析 + 计算引擎双重校验，0 失败",
+                                                         "Celery Beat 定时任务启用：celery_worker 默认开启每日 17:00 增量因子回填，start-dev.ps1 自动拉起 worker+beat，stop-dev.ps1 同步清理",
+                                                         "修复 PGClient.insert/update 对 jsonb 列（tags/output_range）的类型适配（psycopg2.extras.Json），因子播种与 stats_cache 写入不再报错"
+                                                     ]
+                                       },
+                                       {
+                                           "title":  "数据管理后台（/admin/data）体验升级",
+                                           "items":  [
+                                                         "后台任务增加可解析进度（[done/total] 批次进度 + X% 进度），实时显示运行进度",
+                                                         "每个任务标注目标写入表（feature_values / klines_all / symbols ...），并在概览卡片高亮「更新中」状态",
+                                                         "端口迁移 8001-8006 → 10001-10006（规避 Windows WinNAT 7981-8480 保留段），Kong 迁至 18080"
+                                                     ]
+                                       }
+                                   ],
+                    "files":  [
+                                  "scripts/seed_factors_extended.py",
+                                  "scripts/backfill_factors.py",
+                                  "python-services/feature-svc/factors/batch_compute.py",
+                                  "python-services/common/supabase_client.py",
+                                  "python-services/train-svc/celery_worker.py",
+                                  "python-services/train-svc/feature_tasks.py",
+                                  "start-dev.ps1",
+                                  "stop-dev.ps1",
+                                  "python-services/data-svc/routers/admin.py",
+                                  "apps/web/src/app/admin/data/page.tsx",
+                                  "apps/web/src/app/admin/progress/progress-data.json"
+                              ]
+                },
                 {
                     "date":  "2026-07-13",
                     "status":  "全栈本地开发环境打通，登录链路修复",

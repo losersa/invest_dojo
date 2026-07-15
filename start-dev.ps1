@@ -104,6 +104,29 @@ if (-not $SkipPython) {
                 -WorkingDirectory $workdir
             Write-Host "  启动 $($svc.Dir) :$($svc.Port) (PID: $($proc.Id))" -ForegroundColor Green
         }
+
+        # ── Celery 定时任务（Epic 3 收尾：每日 17:00 增量因子计算）──
+        # 默认启用（ENABLE_DAILY_BEAT=1）：worker 消费 feature/train 队列，
+        # beat 按 celery_worker.beat_schedule 每日触发 feature.compute_incremental。
+        # 仅在 Redis（Docker）就绪后启动；celery 可执行文件走 Windows venv 路径。
+        $CELERY = Join-Path $PY_SERVICES ".venv\Scripts\celery.exe"
+        if (Test-Path $CELERY) {
+            $env:PYTHONPATH = "$PY_SERVICES;$PY_SERVICES\train-svc;$PY_SERVICES\feature-svc"
+            $env:ENABLE_DAILY_BEAT = "1"
+            $celeryWorkdir = Join-Path $PY_SERVICES "train-svc"
+            $workerProc = Start-Process -WindowStyle Hidden -PassThru `
+                -FilePath $CELERY `
+                -ArgumentList "-A", "celery_worker.celery_app", "worker", "--loglevel=info", "--queues=train,feature,default", "--concurrency=2" `
+                -WorkingDirectory $celeryWorkdir
+            Write-Host "  启动 celery-worker (PID: $($workerProc.Id))" -ForegroundColor Green
+            $beatProc = Start-Process -WindowStyle Hidden -PassThru `
+                -FilePath $CELERY `
+                -ArgumentList "-A", "celery_worker.celery_app", "beat", "--loglevel=info" `
+                -WorkingDirectory $celeryWorkdir
+            Write-Host "  启动 celery-beat (PID: $($beatProc.Id))" -ForegroundColor Green
+        } else {
+            Write-Host "  [WARN] 找不到 celery.exe，跳过定时任务" -ForegroundColor Red
+        }
     } else {
         Write-Host "  [WARN] 找不到 python-services 目录" -ForegroundColor Red
     }

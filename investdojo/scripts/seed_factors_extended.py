@@ -1054,6 +1054,284 @@ FACTORS = [
 ]
 
 
+# ═══════════════════════════════════════════════════════════════════
+# 系统化的扩展因子生成器
+# 目标：让平台内置因子总数达到 200 个（Epic 3 收尾要求）。
+# 全部使用合法 DSL 原语（MA/EMA/STD/MAX/MIN/RSI/MACD/KDJ/RANK/
+# cross_up/cross_down/PCT/DIFF + 比较与逻辑运算符），
+# ID 统一以 "gen_" 前缀避免与手工因子冲突。
+# ═══════════════════════════════════════════════════════════════════
+
+def _mk(fid, name, name_en, desc, category, tags, formula, output_type, lookback, freq="daily"):
+    return {
+        "id": fid,
+        "name": name,
+        "name_en": name_en,
+        "description": desc,
+        "category": category,
+        "tags": tags,
+        "formula": formula,
+        "formula_type": "dsl",
+        "output_type": output_type,
+        "lookback_days": lookback,
+        "update_frequency": freq,
+        "version": 1,
+        "owner": "platform",
+        "visibility": "public",
+    }
+
+
+def _gen_extra_factors():
+    extra = []
+
+    # ── A. 价格与均线位置关系 ──
+    for n in [5, 10, 20, 30, 60, 120, 250]:
+        extra.append(_mk(
+            f"gen_ma_above_{n}", f"站上{n}日均线", f"Above MA{n}",
+            f"收盘价站上 {n} 日简单均线，趋势向上",
+            "technical", ["趋势", f"{n}日", "均线"],
+            f"close > MA(close,{n})", "boolean", n + 5))
+        extra.append(_mk(
+            f"gen_ma_below_{n}", f"跌破{n}日均线", f"Below MA{n}",
+            f"收盘价跌破 {n} 日简单均线，趋势转弱",
+            "technical", ["趋势", f"{n}日", "均线"],
+            f"close < MA(close,{n})", "boolean", n + 5))
+
+    # ── B. 均线金叉/死叉（多窗口组合）──
+    for s, l in [(3, 10), (5, 10), (5, 20), (10, 20), (10, 60), (20, 60), (20, 120), (60, 120)]:
+        extra.append(_mk(
+            f"gen_ma_gold_{s}_{l}", f"{s}日均线金叉{l}日均线", f"MA{s} cross up MA{l}",
+            f"短期 {s} 日均线上穿中期 {l} 日均线，趋势启动",
+            "technical", ["趋势", "金叉"],
+            f"MA(close,{s}) cross_up MA(close,{l})", "boolean", l + 5))
+        extra.append(_mk(
+            f"gen_ma_death_{s}_{l}", f"{s}日均线死叉{l}日均线", f"MA{s} cross down MA{l}",
+            f"短期 {s} 日均线下穿中期 {l} 日均线，趋势结束",
+            "technical", ["趋势", "死叉"],
+            f"MA(close,{s}) cross_down MA(close,{l})", "boolean", l + 5))
+
+    # ── C. 价格偏离均线幅度 ──
+    for n in [5, 10, 20, 60]:
+        extra.append(_mk(
+            f"gen_ma_break_up_{n}", f"价格高于{n}日均线5%", f"Price {n} above MA 5%",
+            f"收盘价高于 {n} 日均线 5%，强势偏离",
+            "technical", ["偏离", "强势"],
+            f"close > MA(close,{n}) * 1.05", "boolean", n + 5))
+        extra.append(_mk(
+            f"gen_ma_break_dn_{n}", f"价格低于{n}日均线5%", f"Price {n} below MA 5%",
+            f"收盘价低于 {n} 日均线 5%，弱势偏离",
+            "technical", ["偏离", "弱势"],
+            f"close < MA(close,{n}) * 0.95", "boolean", n + 5))
+
+    # ── D. EMA 金叉/死叉 ──
+    for s, l in [(5, 10), (5, 20), (10, 20), (12, 26), (20, 60)]:
+        extra.append(_mk(
+            f"gen_ema_gold_{s}_{l}", f"EMA{s}金叉EMA{l}", f"EMA{s} cross up EMA{l}",
+            f"指数均线 {s} 上穿 {l}，动量转强",
+            "technical", ["动量", "EMA", "金叉"],
+            f"EMA(close,{s}) cross_up EMA(close,{l})", "boolean", l + 5))
+        extra.append(_mk(
+            f"gen_ema_death_{s}_{l}", f"EMA{s}死叉EMA{l}", f"EMA{s} cross down EMA{l}",
+            f"指数均线 {s} 下穿 {l}，动量转弱",
+            "technical", ["动量", "EMA", "死叉"],
+            f"EMA(close,{s}) cross_down EMA(close,{l})", "boolean", l + 5))
+
+    # ── E. RSI 多窗口多阈值 ──
+    for w in [14, 21]:
+        extra.append(_mk(f"gen_rsi{w}_os20", f"RSI({w})极度超卖<20", f"RSI{w} < 20",
+            f"RSI({w}) 低于 20，极度超卖", "technical", ["RSI", "超卖"],
+            f"RSI({w}) < 20", "boolean", w + 5))
+        extra.append(_mk(f"gen_rsi{w}_os30", f"RSI({w})超卖<30", f"RSI{w} < 30",
+            f"RSI({w}) 低于 30，超卖", "technical", ["RSI", "超卖"],
+            f"RSI({w}) < 30", "boolean", w + 5))
+        extra.append(_mk(f"gen_rsi{w}_ob70", f"RSI({w})超买>70", f"RSI{w} > 70",
+            f"RSI({w}) 高于 70，超买", "technical", ["RSI", "超买"],
+            f"RSI({w}) > 70", "boolean", w + 5))
+        extra.append(_mk(f"gen_rsi{w}_ob80", f"RSI({w})极度超买>80", f"RSI{w} > 80",
+            f"RSI({w}) 高于 80，极度超买", "technical", ["RSI", "超买"],
+            f"RSI({w}) > 80", "boolean", w + 5))
+        extra.append(_mk(f"gen_rsi{w}_cu30", f"RSI({w})上穿30", f"RSI{w} cross up 30",
+            f"RSI({w}) 向上突破 30，反弹启动", "technical", ["RSI", "反转"],
+            f"RSI({w}) cross_up 30", "boolean", w + 5))
+        extra.append(_mk(f"gen_rsi{w}_cd70", f"RSI({w})下破70", f"RSI{w} cross down 70",
+            f"RSI({w}) 向下跌破 70，回落", "technical", ["RSI", "反转"],
+            f"RSI({w}) cross_down 70", "boolean", w + 5))
+
+    # ── F. 波动率（STD/MA）──
+    for n in [10, 20, 30, 60]:
+        extra.append(_mk(f"gen_vol_low_{n}_2", f"{n}日波动率<2%", f"Volatility {n} < 2%",
+            f"{n} 日标准差占均线比低于 2%，波动收敛", "technical", ["波动", "收敛"],
+            f"STD(close,{n}) / MA(close,{n}) < 0.02", "boolean", n + 5))
+        extra.append(_mk(f"gen_vol_high_{n}_3", f"{n}日波动率>3%", f"Volatility {n} > 3%",
+            f"{n} 日标准差占均线比高于 3%，波动放大", "technical", ["波动", "放大"],
+            f"STD(close,{n}) / MA(close,{n}) > 0.03", "boolean", n + 5))
+        extra.append(_mk(f"gen_vol_high_{n}_5", f"{n}日波动率>5%", f"Volatility {n} > 5%",
+            f"{n} 日标准差占均线比高于 5%，高波动", "technical", ["波动", "风险"],
+            f"STD(close,{n}) / MA(close,{n}) > 0.05", "boolean", n + 5))
+
+    # ── G. 创 N 日新高/新低 ──
+    for n in [10, 30, 120, 250]:
+        extra.append(_mk(f"gen_high_{n}", f"创{n}日新高", f"{n}-day new high",
+            f"收盘价创 {n} 日新高", "technical", ["突破", "新高"],
+            f"close >= MAX(close,{n})", "boolean", n + 5))
+        extra.append(_mk(f"gen_low_{n}", f"创{n}日新低", f"{n}-day new low",
+            f"收盘价创 {n} 日新低", "technical", ["破位", "新低"],
+            f"close <= MIN(close,{n})", "boolean", n + 5))
+
+    # ── H. 量能放大/萎缩 ──
+    for n in [10, 20, 60]:
+        for mult in [1.5, 2, 3]:
+            extra.append(_mk(f"gen_vol_gt_{mult}x_{n}", f"成交量>{mult}倍{n}日均量",
+                f"Volume > {mult}x MA{n}",
+                f"当日成交量超过 {n} 日均量的 {mult} 倍", "technical", ["量能", "放量"],
+                f"volume > MA(volume,{n}) * {mult}", "boolean", n + 5))
+        for shr in [0.5, 0.7]:
+            extra.append(_mk(f"gen_vol_lt_{shr}_{n}", f"成交量<{shr}倍{n}日均量",
+                f"Volume < {shr}x MA{n}",
+                f"当日成交量不足 {n} 日均量的 {shr} 倍", "technical", ["量能", "缩量"],
+                f"volume < MA(volume,{n}) * {shr}", "boolean", n + 5))
+
+    # ── I. 涨跌幅动量 ──
+    for n in [5, 10, 20]:
+        extra.append(_mk(f"gen_pct_up_{n}", f"{n}日涨幅>3%", f"{n}d up > 3%",
+            f"近 {n} 日涨幅超过 3%", "technical", ["动量", "上涨"],
+            f"PCT(close,{n}) > 0.03", "boolean", n + 5))
+        extra.append(_mk(f"gen_pct_dn_{n}", f"{n}日跌幅>3%", f"{n}d down > 3%",
+            f"近 {n} 日跌幅超过 3%", "technical", ["动量", "下跌"],
+            f"PCT(close,{n}) < -0.03", "boolean", n + 5))
+        extra.append(_mk(f"gen_pct_up_str_{n}", f"{n}日涨幅>5%", f"{n}d up > 5%",
+            f"近 {n} 日涨幅超过 5%，强势", "technical", ["动量", "强势"],
+            f"PCT(close,{n}) > 0.05", "boolean", n + 5))
+        extra.append(_mk(f"gen_pct_dn_str_{n}", f"{n}日跌幅>5%", f"{n}d down > 5%",
+            f"近 {n} 日跌幅超过 5%，弱势", "technical", ["动量", "弱势"],
+            f"PCT(close,{n}) < -0.05", "boolean", n + 5))
+
+    # ── J. 布林带 ──
+    for n in [10, 30]:
+        for m in [1, 2]:
+            extra.append(_mk(f"gen_boll_up_{n}_{m}", f"突破布林上轨({n},{m}σ)", f"Boll upper {n} {m}σ",
+                f"收盘价突破 {n} 日布林带上轨（{m} 倍标准差）", "technical", ["布林", "突破"],
+                f"close > MA(close,{n}) + STD(close,{n}) * {m}", "boolean", n + 5))
+            extra.append(_mk(f"gen_boll_dn_{n}_{m}", f"跌破布林下轨({n},{m}σ)", f"Boll lower {n} {m}σ",
+                f"收盘价跌破 {n} 日布林带下轨（{m} 倍标准差）", "technical", ["布林", "超跌"],
+                f"close < MA(close,{n}) - STD(close,{n}) * {m}", "boolean", n + 5))
+
+    # ── K. MACD 多空 ──
+    extra.append(_mk("gen_macd_pos", "MACD站上零轴", "MACD above 0",
+        "MACD 指标大于 0，多头市场", "technical", ["MACD", "多头"],
+        "MACD() > 0", "boolean", 30))
+    extra.append(_mk("gen_macd_neg", "MACD跌破零轴", "MACD below 0",
+        "MACD 指标小于 0，空头市场", "technical", ["MACD", "空头"],
+        "MACD() < 0", "boolean", 30))
+
+    # ── L. KDJ ──
+    extra.append(_mk("gen_kdj_ob", "KDJ超买>80", "KDJ > 80",
+        "KDJ 指标高于 80，超买", "technical", ["KDJ", "超买"],
+        "KDJ() > 80", "boolean", 15))
+    extra.append(_mk("gen_kdj_os", "KDJ超卖<20", "KDJ < 20",
+        "KDJ 指标低于 20，超卖", "technical", ["KDJ", "超卖"],
+        "KDJ() < 20", "boolean", 15))
+    extra.append(_mk("gen_kdj_gold", "KDJ金叉(上穿50)", "KDJ cross up 50",
+        "KDJ 向上突破 50，转强", "technical", ["KDJ", "金叉"],
+        "KDJ() cross_up 50", "boolean", 15))
+    extra.append(_mk("gen_kdj_death", "KDJ死叉(下破50)", "KDJ cross down 50",
+        "KDJ 向下跌破 50，转弱", "technical", ["KDJ", "死叉"],
+        "KDJ() cross_down 50", "boolean", 15))
+
+    # ── M. 横截面排名 ──
+    for field in ["close", "volume"]:
+        extra.append(_mk(f"gen_rank_top_{field}", f"{field}排名前10%", f"RANK {field} top 10%",
+            f"{field} 横截面排名处于前 10%", "technical", ["排名", "强势"],
+            f"RANK({field}) > 0.9", "boolean", 5))
+        extra.append(_mk(f"gen_rank_bot_{field}", f"{field}排名后10%", f"RANK {field} bottom 10%",
+            f"{field} 横截面排名处于后 10%", "technical", ["排名", "弱势"],
+            f"RANK({field}) < 0.1", "boolean", 5))
+
+    # ── N. 基本面估值/质量 ──
+    extra.append(_mk("gen_pe_lt10", "低PE(<10)", "PE < 10",
+        "滚动市盈率低于 10 倍，深度价值", "valuation", ["估值", "价值"],
+        "pe_ttm < 10", "boolean", 0))
+    extra.append(_mk("gen_pe_lt20", "低PE(<20)", "PE < 20",
+        "滚动市盈率低于 20 倍，合理偏低", "valuation", ["估值", "价值"],
+        "pe_ttm < 20", "boolean", 0))
+    extra.append(_mk("gen_pe_gt50", "高PE(>50)", "PE > 50",
+        "滚动市盈率高于 50 倍，高估值", "valuation", ["估值", "泡沫"],
+        "pe_ttm > 50", "boolean", 0))
+    extra.append(_mk("gen_pb_lt1", "破净(PB<1)", "PB < 1",
+        "市净率低于 1，破净", "valuation", ["估值", "破净"],
+        "pb < 1", "boolean", 0))
+    extra.append(_mk("gen_pb_lt2", "低PB(<2)", "PB < 2",
+        "市净率低于 2，低估值", "valuation", ["估值", "价值"],
+        "pb < 2", "boolean", 0))
+    extra.append(_mk("gen_pb_gt5", "高PB(>5)", "PB > 5",
+        "市净率高于 5，高估值", "valuation", ["估值", "泡沫"],
+        "pb > 5", "boolean", 0))
+    extra.append(_mk("gen_roe_gt10", "ROE>10%", "ROE > 10",
+        "净资产收益率高于 10%", "growth", ["ROE", "质量"],
+        "roe > 10", "boolean", 0))
+    extra.append(_mk("gen_roe_gt20", "ROE>20%", "ROE > 20",
+        "净资产收益率高于 20%，优质", "growth", ["ROE", "优质"],
+        "roe > 20", "boolean", 0))
+    extra.append(_mk("gen_gp_gt50", "高毛利率(>50%)", "Gross margin > 50",
+        "毛利率高于 50%，强护城河", "fundamental", ["毛利率", "护城河"],
+        "gp_margin > 50", "boolean", 0))
+    extra.append(_mk("gen_low_pe_pb", "低PE低PB", "Low PE & low PB",
+        "PE < 25 且 PB < 3，双重低估值", "valuation", ["估值", "价值"],
+        "pe_ttm < 25 AND pb < 3", "boolean", 0))
+    extra.append(_mk("gen_quality_compound", "高质量(ROE高负债低)", "Quality compound",
+        "ROE > 15% 且负债率 < 50%，高质量公司", "fundamental", ["质量", "稳健"],
+        "roe > 15 AND debt_asset_ratio < 50", "boolean", 0))
+    extra.append(_mk("gen_small_cap", "小市值(<100亿)", "Small cap < 10B",
+        "总市值低于 100 亿，小盘股", "macro", ["市值", "小盘"],
+        "market_cap < 10000000000", "boolean", 0))
+    extra.append(_mk("gen_mid_cap", "中市值(100-500亿)", "Mid cap 10-50B",
+        "总市值介于 100 亿至 500 亿，中盘股", "macro", ["市值", "中盘"],
+        "market_cap > 10000000000 AND market_cap < 50000000000", "boolean", 0))
+    extra.append(_mk("gen_growth_value", "成长价值(增利低估值)", "Growth value",
+        "净利润同比 > 20% 且 PE < 30，成长价值兼具", "fundamental", ["成长", "价值"],
+        "yoy_ni > 20 AND pe_ttm < 30", "boolean", 0))
+
+    # ── O. 综合策略 ──
+    extra.append(_mk("gen_strong_uptrend_vol", "强上升趋势+放量", "Strong uptrend + vol",
+        "站上20日线且20>60日线且放量，强趋势共振", "custom", ["综合", "趋势", "量能"],
+        "close > MA(close,20) AND MA(close,20) > MA(close,60) AND volume > MA(volume,20)",
+        "boolean", 65))
+    extra.append(_mk("gen_weak_downtrend_vol", "弱下降趋势+放量", "Weak downtrend + vol",
+        "跌破20日线且20<60日线且放量，弱趋势共振", "custom", ["综合", "趋势", "量能"],
+        "close < MA(close,20) AND MA(close,20) < MA(close,60) AND volume > MA(volume,20)",
+        "boolean", 65))
+    extra.append(_mk("gen_rsi_ma_conf", "RSI+均线确认", "RSI MA confirm",
+        "RSI(14)>50 且站上20日线，动量与趋势共振", "custom", ["综合", "动量", "趋势"],
+        "RSI(14) > 50 AND close > MA(close,20)", "boolean", 25))
+    extra.append(_mk("gen_breakout_vol", "突破新高+放量", "Breakout + vol",
+        "创60日新高且放量，突破确认", "custom", ["综合", "突破", "量能"],
+        "close >= MAX(close,60) AND volume > MA(volume,20)", "boolean", 65))
+    extra.append(_mk("gen_mean_revert_up", "超跌反弹准备", "Mean revert up",
+        "创20日新低且RSI(14)>30，超跌后企稳", "custom", ["综合", "反转", "抄底"],
+        "close <= MIN(close,20) AND RSI(14) > 30", "boolean", 25))
+    extra.append(_mk("gen_pullback_buy", "回调买入", "Pullback buy",
+        "站上20日线但近5日回调且放量，健康回调", "custom", ["综合", "回调", "买入"],
+        "close > MA(close,20) AND PCT(close,5) < -0.03 AND volume > MA(volume,20)",
+        "boolean", 25))
+    extra.append(_mk("gen_value_trend", "价值+趋势", "Value + trend",
+        "PE<30 且站上60日线，价值与趋势共振", "custom", ["综合", "价值", "趋势"],
+        "pe_ttm < 30 AND close > MA(close,60)", "boolean", 65))
+    extra.append(_mk("gen_momentum_dual", "双动量", "Dual momentum",
+        "RSI(14)>50 且近20日涨幅>0，价格动量共振", "custom", ["综合", "动量"],
+        "RSI(14) > 50 AND PCT(close,20) > 0", "boolean", 25))
+    extra.append(_mk("gen_risk_off", "避险信号", "Risk off",
+        "跌破60日线且RSI(14)<50，系统性避险", "custom", ["综合", "风控", "避险"],
+        "close < MA(close,60) AND RSI(14) < 50", "boolean", 65))
+    extra.append(_mk("gen_accumulate", "主力吸筹", "Accumulation",
+        "缩量企稳：成交量<均量且站上5日线", "custom", ["综合", "吸筹", "量价"],
+        "volume < MA(volume,20) AND close > MA(close,5)", "boolean", 25))
+
+    return extra
+
+
+FACTORS = FACTORS + _gen_extra_factors()
+
+
 def main():
     client = get_supabase_client()
 

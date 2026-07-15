@@ -30,10 +30,13 @@ interface TableInfo {
 interface TaskInfo {
   status: "running" | "success" | "failed" | "timeout" | "interrupted";
   label: string;
+  tables?: string[];
   started_at: string;
   finished_at: string | null;
   error: string | null;
   progress: number | null;
+  progress_current?: number | null;
+  progress_total?: number | null;
   last_line: string | null;
 }
 
@@ -49,12 +52,23 @@ interface HistoryRecord {
 }
 
 const TASKS = [
-  { id: "update_klines", label: "增量更新 K 线", desc: "从 BaoStock 拉取最新交易日的 5m K 线" },
-  { id: "update_snapshots", label: "更新市场快照", desc: "更新每日市场统计快照" },
-  { id: "seed_fundamentals", label: "采集基本面", desc: "采集股票基本面数据（EPS、总股本、ROE 等）" },
-  { id: "seed_symbols", label: "同步股票代码", desc: "从 BaoStock 同步最新股票列表" },
-  { id: "backfill_factors", label: "回填因子值", desc: "为已发布因子计算并写入 feature_values 缓存" },
+  { id: "update_klines", label: "增量更新 K 线", desc: "从 BaoStock 拉取最新交易日的 5m K 线", tables: ["klines_all"] },
+  { id: "update_snapshots", label: "更新市场快照", desc: "更新每日市场统计快照", tables: ["market_snapshots"] },
+  { id: "seed_fundamentals", label: "采集基本面", desc: "采集股票基本面数据（EPS、总股本、ROE 等）", tables: ["fundamentals"] },
+  { id: "seed_symbols", label: "同步股票代码", desc: "从 BaoStock 同步最新股票列表", tables: ["symbols", "industries"] },
+  { id: "backfill_factors", label: "回填因子值", desc: "为已发布因子计算并写入 feature_values 缓存", tables: ["feature_values"] },
 ];
+
+// 表名 → 中文标签（与数据概览卡片保持一致）
+const TABLE_LABELS: Record<string, string> = {
+  klines_all: "K 线数据",
+  symbols: "股票代码",
+  industries: "行业分类",
+  factor_definitions: "因子定义",
+  feature_values: "因子预计算值",
+  market_snapshots: "市场快照",
+  fundamentals: "基本面数据",
+};
 
 export default function AdminDataPage() {
   const [tables, setTables] = useState<TableInfo[]>([]);
@@ -149,6 +163,14 @@ export default function AdminDataPage() {
     return () => clearInterval(timer);
   }, [tasks, userId, userRole]);
 
+  // 正在被更新的表集合（用于高亮数据概览卡片）
+  const activeTables = new Set<string>();
+  Object.values(tasks).forEach((t) => {
+    if (t.status === "running" && t.tables) {
+      t.tables.forEach((tb) => activeTables.add(tb));
+    }
+  });
+
   if (unauthorized) {
     return (
       <div className="min-h-screen bg-rc-bg">
@@ -205,24 +227,42 @@ export default function AdminDataPage() {
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {tables.map((t) => (
-                <div key={t.table} className="rc-card p-4">
-                  <div className="text-[11px] font-rc-mono text-rc-text-dim uppercase tracking-[0.3px]">
-                    {t.label}
-                  </div>
-                  <div className={`text-[20px] font-rc-mono mt-1 ${t.count > 0 ? "text-rc-blue" : "text-rc-text-dim"}`}>
-                    {t.count >= 0 ? t.count.toLocaleString() : "ERR"}
-                  </div>
-                  {t.latest && (
-                    <div className="text-[10px] font-rc-mono text-rc-text-dim mt-1">
-                      最近：{t.latest.slice(0, 10)}
+              {tables.map((t) => {
+                const isUpdating = activeTables.has(t.table);
+                return (
+                  <div
+                    key={t.table}
+                    data-table={t.table}
+                    className={`rc-card p-4 transition ${
+                      isUpdating ? "border-rc-blue/60 ring-1 ring-rc-blue/40" : ""
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="text-[11px] font-rc-mono text-rc-text-dim uppercase tracking-[0.3px]">
+                        {t.label}
+                      </div>
+                      {isUpdating && (
+                        <span className="flex items-center gap-1 text-[9px] font-rc-mono text-rc-blue">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rc-blue animate-pulse" />
+                          更新中
+                        </span>
+                      )}
                     </div>
-                  )}
-                  {t.count === 0 && (
-                    <div className="text-[10px] text-rc-yellow mt-1">无数据</div>
-                  )}
-                </div>
-              ))}
+                    <div className={`text-[20px] font-rc-mono mt-1 ${t.count > 0 ? "text-rc-blue" : "text-rc-text-dim"}`}>
+                      {t.count >= 0 ? t.count.toLocaleString() : "ERR"}
+                    </div>
+                    <div className="text-[9px] font-rc-mono text-rc-text-dim/60 mt-0.5">{t.table}</div>
+                    {t.latest && (
+                      <div className="text-[10px] font-rc-mono text-rc-text-dim mt-1">
+                        最近：{t.latest.slice(0, 10)}
+                      </div>
+                    )}
+                    {t.count === 0 && (
+                      <div className="text-[10px] text-rc-yellow mt-1">无数据</div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </section>
@@ -267,7 +307,7 @@ function statusBadge(status: string) {
 }
 
 function TaskCard({ task, status, onTrigger, userId, userRole }: {
-  task: { id: string; label: string; desc: string };
+  task: { id: string; label: string; desc: string; tables?: string[] };
   status?: TaskInfo;
   onTrigger: () => void;
   userId: string | null;
@@ -395,6 +435,11 @@ function TaskCard({ task, status, onTrigger, userId, userRole }: {
             {isRunning && progress !== null && progress !== undefined && (
               <span className="text-[11px] font-rc-mono text-rc-blue">{progress}%</span>
             )}
+            {isRunning && status?.progress_current != null && status?.progress_total != null && (
+              <span className="text-[10px] font-rc-mono text-rc-text-dim">
+                {status.progress_current}/{status.progress_total}
+              </span>
+            )}
             {isRunning && elapsed > 0 && (
               <span className="text-[10px] font-rc-mono text-rc-text-dim">
                 {elapsed}s
@@ -404,6 +449,23 @@ function TaskCard({ task, status, onTrigger, userId, userRole }: {
 
           <p className="text-[12px] text-rc-text-dim mt-1">{task.desc}</p>
 
+          {/* 写入目标表 */}
+          {task.tables && task.tables.length > 0 && (
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <span className="text-[10px] text-rc-text-dim">写入表：</span>
+              {task.tables.map((tb) => (
+                <span
+                  key={tb}
+                  className="text-[10px] font-rc-mono px-1.5 py-0.5 rounded bg-rc-blue/10 border border-rc-blue/25 text-rc-blue"
+                  title={tb}
+                >
+                  {TABLE_LABELS[tb] ?? tb}
+                  <span className="text-rc-text-dim/60 ml-1">{tb}</span>
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* 进度条 */}
           {isRunning && progress !== null && progress !== undefined && (
             <div className="mt-2 h-1.5 bg-[#1a1a1a] rounded-full overflow-hidden">
@@ -411,6 +473,12 @@ function TaskCard({ task, status, onTrigger, userId, userRole }: {
                 className="h-full bg-rc-blue rounded-full transition-all duration-500"
                 style={{ width: `${progress}%` }}
               />
+            </div>
+          )}
+          {/* 运行中但还没解析到进度 —— 显示未确定的脉冲条，避免用户以为卡住 */}
+          {isRunning && (progress === null || progress === undefined) && (
+            <div className="mt-2 h-1.5 bg-[#1a1a1a] rounded-full overflow-hidden">
+              <div className="h-full w-1/3 bg-rc-blue/50 rounded-full animate-pulse" />
             </div>
           )}
 

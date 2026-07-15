@@ -249,24 +249,29 @@ async def trigger_task(
         "update_klines": {
             "script": "update_daily_klines.py",
             "label": "增量更新 K 线",
+            "tables": ["klines_all"],
         },
         "update_snapshots": {
             "script": "update_market_snapshots.py",
             "label": "更新市场快照",
+            "tables": ["market_snapshots"],
         },
         "seed_fundamentals": {
             "script": "seed_fundamentals.py",
             "label": "采集基本面数据",
+            "tables": ["fundamentals"],
         },
         "seed_symbols": {
             "script": "seed_symbols_local.py",
             "label": "同步股票代码",
+            "tables": ["symbols", "industries"],
         },
         "backfill_factors": {
             "script": "backfill_factors.py",
             "args": ["--from", (datetime.utcnow().replace(day=1)).strftime("%Y-%m-%d"),
                      "--to", datetime.utcnow().strftime("%Y-%m-%d")],
             "label": "回填因子值",
+            "tables": ["feature_values"],
         },
     }
 
@@ -284,10 +289,13 @@ async def trigger_task(
     _task_status[task_name] = {
         "status": "running",
         "label": task_info["label"],
+        "tables": task_info.get("tables", []),  # 本任务写入的目标表
         "started_at": datetime.utcnow().isoformat() + "Z",
         "finished_at": None,
         "error": None,
         "progress": None,  # 进度百分比（0~100），脚本输出中解析
+        "progress_current": None,  # 当前批次/项数
+        "progress_total": None,  # 总批次/项数
         "last_line": None,  # 最后一行输出
     }
     _task_logs[task_name] = []
@@ -325,6 +333,9 @@ async def get_task_logs(
         "task_name": task_name,
         "status": status.get("status"),
         "progress": status.get("progress"),
+        "progress_current": status.get("progress_current"),
+        "progress_total": status.get("progress_total"),
+        "tables": status.get("tables", []),
         "last_line": status.get("last_line"),
         "logs": logs[-tail:],
         "total_lines": len(logs),
@@ -415,19 +426,21 @@ def _run_script_task(task_name: str, task_info: dict) -> None:
             _task_status[task_name]["last_line"] = line
 
             # 尝试解析进度（匹配常见格式）
-            # 格式1: [50%] 或 50% 或 (50%)
-            m = _re.search(r"(\d{1,3})%", line)
-            if m:
-                pct = int(m.group(1))
-                if 0 <= pct <= 100:
-                    _task_status[task_name]["progress"] = pct
-
-            # 格式2: 100/5000 或 batch 10/50
+            # 格式2 优先：[100/5000] 或 batch 10/50 —— 能同时拿到 current/total
             m = _re.search(r"(\d+)\s*/\s*(\d+)", line)
             if m:
                 current, total = int(m.group(1)), int(m.group(2))
                 if total > 0:
                     _task_status[task_name]["progress"] = min(100, int(current / total * 100))
+                    _task_status[task_name]["progress_current"] = current
+                    _task_status[task_name]["progress_total"] = total
+            else:
+                # 格式1: [50%] 或 50% 或 (50%)
+                m = _re.search(r"(\d{1,3})%", line)
+                if m:
+                    pct = int(m.group(1))
+                    if 0 <= pct <= 100:
+                        _task_status[task_name]["progress"] = pct
 
         proc.wait(timeout=3600)
 

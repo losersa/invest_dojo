@@ -70,8 +70,17 @@ def main():
     print(f"  因子: {'全部 platform' if factor_ids is None else f'{len(factor_ids)} 个'}")
     print(f"  股票: {'symbols 全部' if symbols is None else f'{len(symbols)} 个'}")
     print(f"  每批: {args.batch_size} 只股票")
+    print(f"  写入表: feature_values")
     print(f"  模式: {'[DRY-RUN]' if args.dry_run else '[WRITE]'}")
     print("=" * 58)
+
+    # 进度回调：每批完成打印 [done/total]，后台任务据此解析进度百分比。
+    def _on_progress(done: int, total: int, written: int) -> None:
+        pct = int(done / total * 100) if total else 0
+        print(
+            f"  [{done}/{total}] 批次完成 {pct}% | 已写入 {written:,} 条 -> feature_values",
+            flush=True,
+        )
 
     t0 = time.perf_counter()
     result = compute_and_save(
@@ -81,6 +90,7 @@ def main():
         symbols=symbols,
         batch_size=args.batch_size,
         dry_run=args.dry_run,
+        on_progress=_on_progress,
     )
     duration = time.perf_counter() - t0
 
