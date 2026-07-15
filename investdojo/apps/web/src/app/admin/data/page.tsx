@@ -25,6 +25,7 @@ interface TableInfo {
   count: number;
   latest: string | null;
   error?: string;
+  loaded?: boolean; // 该卡片的数据是否已返回（用于逐个渲染）
 }
 
 interface TaskInfo {
@@ -70,10 +71,14 @@ const TABLE_LABELS: Record<string, string> = {
   fundamentals: "基本面数据",
 };
 
+// 数据概览卡片顺序（与后端 _TABLE_DEFS 一致）
+const OVERVIEW_TABLES = Object.keys(TABLE_LABELS);
+
 export default function AdminDataPage() {
-  const [tables, setTables] = useState<TableInfo[]>([]);
+  // 每张卡片独立保存数据，键为表名；未出现则显示骨架
+  const [tableData, setTableData] = useState<Record<string, TableInfo>>({});
   const [tasks, setTasks] = useState<Record<string, TaskInfo>>({});
-  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -93,32 +98,64 @@ export default function AdminDataPage() {
     });
   }, []);
 
-  // 加载数据概览
-  const loadOverview = useCallback(async () => {
+  // 加载任务状态（内存数据，很快，独立请求避免拖慢概览）
+  const fetchTasks = useCallback(async () => {
     if (!userId || !userRole) return;
-    setLoading(true);
-    setError(null);
     try {
-      const resp = await fetch(`${DATA_SVC_URL}/api/v1/data/admin/data/overview`, {
-        headers: {
-          "X-User-Id": userId,
-          "X-User-Role": userRole,
-        },
+      const resp = await fetch(`${DATA_SVC_URL}/api/v1/data/admin/data/tasks`, {
+        headers: { "X-User-Id": userId, "X-User-Role": userRole },
       });
       if (resp.status === 403) {
         setUnauthorized(true);
         return;
       }
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const json = await resp.json();
-      setTables(json.data);
-      setTasks(json.tasks || {});
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "加载失败");
-    } finally {
-      setLoading(false);
+      if (resp.ok) {
+        const json = await resp.json();
+        setTasks(json.tasks || {});
+      }
+    } catch {
+      // ignore
     }
   }, [userId, userRole]);
+
+  // 加载数据概览：每张卡片单独请求，谁先返回谁先渲染
+  const loadOverview = useCallback(async () => {
+    if (!userId || !userRole) return;
+    setRefreshing(true);
+    setError(null);
+    fetchTasks();
+
+    await Promise.allSettled(
+      OVERVIEW_TABLES.map(async (name) => {
+        try {
+          const resp = await fetch(
+            `${DATA_SVC_URL}/api/v1/data/admin/data/overview/table/${name}`,
+            { headers: { "X-User-Id": userId, "X-User-Role": userRole } },
+          );
+          if (resp.status === 403) {
+            setUnauthorized(true);
+            return;
+          }
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const json = await resp.json();
+          setTableData((prev) => ({ ...prev, [name]: { ...json, loaded: true } }));
+        } catch (e: unknown) {
+          setTableData((prev) => ({
+            ...prev,
+            [name]: {
+              table: name,
+              label: TABLE_LABELS[name] ?? name,
+              count: -1,
+              latest: null,
+              loaded: true,
+              error: e instanceof Error ? e.message : "加载失败",
+            },
+          }));
+        }
+      }),
+    );
+    setRefreshing(false);
+  }, [userId, userRole, fetchTasks]);
 
   useEffect(() => {
     if (userId && userRole) loadOverview();
@@ -203,9 +240,10 @@ export default function AdminDataPage() {
             </Link>
             <button
               onClick={loadOverview}
-              className="px-4 py-2 rounded-[8px] bg-rc-surface-card border border-rc-border-subtle text-[13px] text-rc-text-secondary hover:text-white transition"
+              disabled={refreshing}
+              className="px-4 py-2 rounded-[8px] bg-rc-surface-card border border-rc-border-subtle text-[13px] text-rc-text-secondary hover:text-white transition disabled:opacity-50"
             >
-              刷新
+              {refreshing ? "刷新中…" : "刷新"}
             </button>
           </div>
         </div>
@@ -219,52 +257,49 @@ export default function AdminDataPage() {
         {/* 数据概览 */}
         <section className="mb-8">
           <h2 className="text-[14px] font-medium text-white mb-4">数据概览</h2>
-          {loading ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {Array.from({ length: 7 }).map((_, i) => (
-                <div key={i} className="rc-card h-[80px] animate-pulse" />
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {tables.map((t) => {
-                const isUpdating = activeTables.has(t.table);
-                return (
-                  <div
-                    key={t.table}
-                    data-table={t.table}
-                    className={`rc-card p-4 transition ${
-                      isUpdating ? "border-rc-blue/60 ring-1 ring-rc-blue/40" : ""
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="text-[11px] font-rc-mono text-rc-text-dim uppercase tracking-[0.3px]">
-                        {t.label}
-                      </div>
-                      {isUpdating && (
-                        <span className="flex items-center gap-1 text-[9px] font-rc-mono text-rc-blue">
-                          <span className="w-1.5 h-1.5 rounded-full bg-rc-blue animate-pulse" />
-                          更新中
-                        </span>
-                      )}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {OVERVIEW_TABLES.map((name) => {
+              const t = tableData[name];
+              // 该卡片数据尚未返回 → 显示骨架，其他已返回的卡片照常展示
+              if (!t || !t.loaded) {
+                return <div key={name} className="rc-card h-[80px] animate-pulse" />;
+              }
+              const isUpdating = activeTables.has(t.table);
+              return (
+                <div
+                  key={t.table}
+                  data-table={t.table}
+                  className={`rc-card p-4 transition ${
+                    isUpdating ? "border-rc-blue/60 ring-1 ring-rc-blue/40" : ""
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] font-rc-mono text-rc-text-dim uppercase tracking-[0.3px]">
+                      {t.label}
                     </div>
-                    <div className={`text-[20px] font-rc-mono mt-1 ${t.count > 0 ? "text-rc-blue" : "text-rc-text-dim"}`}>
-                      {t.count >= 0 ? t.count.toLocaleString() : "ERR"}
-                    </div>
-                    <div className="text-[9px] font-rc-mono text-rc-text-dim/60 mt-0.5">{t.table}</div>
-                    {t.latest && (
-                      <div className="text-[10px] font-rc-mono text-rc-text-dim mt-1">
-                        最近：{t.latest.slice(0, 10)}
-                      </div>
-                    )}
-                    {t.count === 0 && (
-                      <div className="text-[10px] text-rc-yellow mt-1">无数据</div>
+                    {isUpdating && (
+                      <span className="flex items-center gap-1 text-[9px] font-rc-mono text-rc-blue">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rc-blue animate-pulse" />
+                        更新中
+                      </span>
                     )}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  <div className={`text-[20px] font-rc-mono mt-1 ${t.count > 0 ? "text-rc-blue" : "text-rc-text-dim"}`}>
+                    {t.count >= 0 ? t.count.toLocaleString() : "ERR"}
+                  </div>
+                  <div className="text-[9px] font-rc-mono text-rc-text-dim/60 mt-0.5">{t.table}</div>
+                  {t.latest && (
+                    <div className="text-[10px] font-rc-mono text-rc-text-dim mt-1">
+                      最近：{t.latest.slice(0, 10)}
+                    </div>
+                  )}
+                  {t.count === 0 && (
+                    <div className="text-[10px] text-rc-yellow mt-1">无数据</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </section>
 
         {/* 数据更新任务 */}

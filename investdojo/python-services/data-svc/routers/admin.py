@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json as _json
 import re
 import subprocess
@@ -173,58 +174,90 @@ def _restore_task_status() -> None:
 _restore_task_status()
 
 
-@router.get("/admin/data/overview", summary="数据概览（各表统计）")
+# 数据概览的表定义（顺序与前端卡片一致）；latest_col 为需要取最近更新时间的列
+_TABLE_DEFS = [
+    {"name": "klines_all", "label": "K 线数据", "latest_col": "dt"},
+    {"name": "symbols", "label": "股票代码", "latest_col": None},
+    {"name": "industries", "label": "行业分类", "latest_col": None},
+    {"name": "factor_definitions", "label": "因子定义", "latest_col": "updated_at"},
+    {"name": "feature_values", "label": "因子预计算值", "latest_col": None},
+    {"name": "market_snapshots", "label": "市场快照", "latest_col": "date"},
+    {"name": "fundamentals", "label": "基本面数据", "latest_col": None},
+]
+
+
+def _table_row_estimate(client, table: str) -> int:
+    """快速估算行数：读取 pg_stat_user_tables.n_live_tup，避免对大表执行 SELECT count(*) 全表扫描。
+
+    若统计信息缺失（从未 ANALYZE）则回退到精确 count。
+    """
+    try:
+        rows = client.select(
+            "pg_stat_user_tables",
+            columns="n_live_tup",
+            filters={"relname": f"eq.{table}"},
+        )
+        if rows:
+            n = rows[0].get("n_live_tup")
+            if n is not None:
+                return int(n)
+    except Exception as exc:
+        logger.warning("admin.overview.estimate_failed", table=table, error=str(exc))
+    # 回退：精确计数（对小表很快）
+    return client.count(table)
+
+
+def _query_table_stats(client, tdef: dict) -> dict:
+    """查询单表的统计信息（行数估算 + 最近更新时间）。设计为可在子线程中并发执行。"""
+    table = tdef["name"]
+    try:
+        count = _table_row_estimate(client, table)
+        latest = None
+        col = tdef.get("latest_col")
+        if col:
+            try:
+                rows = client.select(table, columns=col, order=f"{col}.desc", limit=1)
+                if rows:
+                    latest = str(rows[0][col])
+            except Exception as exc:
+                logger.warning("admin.overview.latest_failed", table=table, error=str(exc))
+        return {"table": table, "label": tdef["label"], "count": count, "latest": latest}
+    except Exception as exc:
+        return {"table": table, "label": tdef["label"], "count": -1, "latest": None, "error": str(exc)}
+
+
+@router.get("/admin/data/overview", summary="数据概览（各表统计，并发查询）")
 async def data_overview(
     x_user_id: str | None = Header(None, alias="X-User-Id"),
     x_user_role: str | None = Header(None, alias="X-User-Role"),
 ):
-    """返回所有数据表的行数和最近更新时间"""
+    """并发查询所有数据表的行数与最近更新时间，总耗时≈最慢的单表查询。"""
     _require_admin(x_user_id, x_user_role)
 
     client = get_supabase_client()
+    loop = asyncio.get_running_loop()
+    # 各表查询在线程池中并发执行（DB 调用为阻塞 IO），连接池 maxconn=10 足以支撑
+    results = await asyncio.gather(*[
+        loop.run_in_executor(None, _query_table_stats, client, t) for t in _TABLE_DEFS
+    ])
+    return {"data": list(results), "tasks": _task_status}
 
-    tables = [
-        {"name": "klines_all", "label": "K 线数据"},
-        {"name": "symbols", "label": "股票代码"},
-        {"name": "industries", "label": "行业分类"},
-        {"name": "factor_definitions", "label": "因子定义"},
-        {"name": "feature_values", "label": "因子预计算值"},
-        {"name": "market_snapshots", "label": "市场快照"},
-        {"name": "fundamentals", "label": "基本面数据"},
-    ]
 
-    result = []
-    for t in tables:
-        try:
-            count = client.count(t["name"])
-            # 尝试获取最近更新时间
-            latest = None
-            if t["name"] == "klines_all":
-                rows = client.select(t["name"], columns="dt", order="dt.desc", limit=1)
-                latest = rows[0]["dt"] if rows else None
-            elif t["name"] in ("market_snapshots",):
-                rows = client.select(t["name"], columns="date", order="date.desc", limit=1)
-                latest = rows[0]["date"] if rows else None
-            elif t["name"] == "factor_definitions":
-                rows = client.select(t["name"], columns="updated_at", order="updated_at.desc", limit=1)
-                latest = rows[0]["updated_at"] if rows else None
-
-            result.append({
-                "table": t["name"],
-                "label": t["label"],
-                "count": count,
-                "latest": latest,
-            })
-        except Exception as exc:
-            result.append({
-                "table": t["name"],
-                "label": t["label"],
-                "count": -1,
-                "latest": None,
-                "error": str(exc),
-            })
-
-    return {"data": result, "tasks": _task_status}
+@router.get("/admin/data/overview/table/{table_name}", summary="单表统计（前端分卡片渐进加载）")
+async def table_overview(
+    table_name: str,
+    x_user_id: str | None = Header(None, alias="X-User-Id"),
+    x_user_role: str | None = Header(None, alias="X-User-Role"),
+):
+    """返回单个表的行数与最近更新时间，供前端按卡片并发请求、谁先返回谁先渲染。"""
+    _require_admin(x_user_id, x_user_role)
+    tdef = next((t for t in _TABLE_DEFS if t["name"] == table_name), None)
+    if not tdef:
+        raise _param_error(f"Unknown table: {table_name}. Available: {[t['name'] for t in _TABLE_DEFS]}")
+    client = get_supabase_client()
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(None, _query_table_stats, client, tdef)
+    return result
 
 
 @router.post("/admin/data/tasks/{task_name}", summary="触发数据更新任务")

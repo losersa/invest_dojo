@@ -2,7 +2,7 @@
 
 > 本文档由 `generate_progress_doc.ps1` **自动生成**，唯一数据源为
 > `investdojo/apps/web/src/app/admin/progress/progress-data.json`（同时驱动 `/admin/progress` 页面）。
-> 最后更新：**2026-07-13**
+> 最后更新：**2026-07-15**
 
 ## 需求排单（Backlog）
 
@@ -10,8 +10,8 @@ _暂无排单需求。新增需求请用 sync_progress.ps1 -Backlog ... 登记�
 
 ## 总览
 
-- 总体任务完成度：**24 / 53（45%）**
-- Epic 状态：✅ 已完成 3 个 · 🔶 进行中 1 个 · ⬜ 未开始 5 个
+- 总体任务完成度：**25 / 53（47%）**
+- Epic 状态：✅ 已完成 4 个 · 🔶 进行中 0 个 · ⬜ 未开始 5 个
 
 ## Epic 进度
 
@@ -20,7 +20,7 @@ _暂无排单需求。新增需求请用 sync_progress.ps1 -Backlog ... 登记�
 | 0 | 基础设施 | 4 | 4 | ✅ 已完成 |
 | 1 | 数据层与采集 | 7 | 7 | ✅ 已完成 |
 | 2 | Python 服务骨架 | 6 | 6 | ✅ 已完成 |
-| 3 | 因子库 | 7 | 8 | 🔶 进行中 |
+| 3 | 因子库 | 8 | 8 | ✅ 已完成 |
 | 4 | 模型训练与回测 | 0 | 7 | ⬜ 未开始 |
 | 5 | 模型市场 + 官方模型 | 0 | 5 | ⬜ 未开始 |
 | 6 | 会话编排与副驾 | 0 | 8 | ⬜ 未开始 |
@@ -53,13 +53,13 @@ _暂无排单需求。新增需求请用 sync_progress.ps1 -Backlog ... 登记�
   - 管理后台 API（任务触发 + SQL 查询 + 任务历史）（完成）
   - 强制 as_of 注入防未来函数（完成）
   - 560 万行日K / 5528 股票 / 10.8 万 5mK（完成）
-- **feature-svc** 🔶 进行中（75%） — 因子库服务（:8001）
+- **feature-svc** ✅ 已完成（100%） — 因子库服务（:10001）
   - DSL 解析器 + 计算引擎（完成）
-  - 63 个 DSL 因子定义（完成）
+  - 212 个内置因子定义（完成，达标 200）
   - CRUD + 发布/撤销 + 历史查询（完成）
   - 批量回填 + 增量计算（完成）
-  - 200 个内置因子（未完成，待补充到 200）
-  - Celery Beat 定时任务（未开始）
+  - 200 个内置因子（完成，实际 212 个 platform 因子）
+  - Celery Beat 定时任务（完成，每日 17:00 增量因子回填）
 - **train-svc** 🟡 部分完成（20%） — 模型训练服务（:8002）
   - FastAPI 骨架 + Celery worker（完成）
   - dummy_train 任务 + 状态流转（完成）
@@ -127,6 +127,21 @@ _暂无排单需求。新增需求请用 sync_progress.ps1 -Backlog ... 登记�
   - UTF-8 BOM 编码 + cmd /c 启动前端（完成）
 
 ## 开发日志
+
+### 2026-07-15
+**状态**：Epic 3 因子库收尾完成（8/8），数据管理后台体验升级
+
+- **Epic 3 因子库收尾（8/8）**
+  - 内置因子补充至 200+：seed_factors_extended.py 新增系统化 DSL 生成器（均线/EMA/RSI/STD/KDJ/MACD/RANK/布林/量能/基本面/综合等），platform 因子达 212 个
+  - 全部 212 个因子经 DSL 解析 + 计算引擎双重校验，0 失败
+  - Celery Beat 定时任务启用：celery_worker 默认开启每日 17:00 增量因子回填，start-dev.ps1 自动拉起 worker+beat，stop-dev.ps1 同步清理
+  - 修复 PGClient.insert/update 对 jsonb 列（tags/output_range）的类型适配（psycopg2.extras.Json），因子播种与 stats_cache 写入不再报错
+- **数据管理后台（/admin/data）体验升级**
+  - 后台任务增加可解析进度（[done/total] 批次进度 + X% 进度），实时显示运行进度
+  - 每个任务标注目标写入表（feature_values / klines_all / symbols ...），并在概览卡片高亮「更新中」状态
+  - 端口迁移 8001-8006 → 10001-10006（规避 Windows WinNAT 7981-8480 保留段），Kong 迁至 18080
+
+  涉及文件：scripts/seed_factors_extended.py, scripts/backfill_factors.py, python-services/feature-svc/factors/batch_compute.py, python-services/common/supabase_client.py, python-services/train-svc/celery_worker.py, python-services/train-svc/feature_tasks.py, start-dev.ps1, stop-dev.ps1, python-services/data-svc/routers/admin.py, apps/web/src/app/admin/data/page.tsx, apps/web/src/app/admin/progress/progress-data.json
 
 ### 2026-07-13
 **状态**：全栈本地开发环境打通，登录链路修复
