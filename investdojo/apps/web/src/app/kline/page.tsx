@@ -16,8 +16,8 @@ import { useFavoriteFactors } from "@/hooks/useFavoriteFactors";
 import { Suspense } from "react";
 
 // ── 微服务基础地址（本地默认 localhost，可用 .env.local 覆盖）──
-const FEATURE_SVC_URL = process.env.NEXT_PUBLIC_FEATURE_SVC_URL ?? "http://localhost:8001";
-const DATA_SVC_URL = process.env.NEXT_PUBLIC_DATA_SVC_URL ?? "http://localhost:8006";
+const FEATURE_SVC_URL = process.env.NEXT_PUBLIC_FEATURE_SVC_URL ?? "http://localhost:10001";
+const DATA_SVC_URL = process.env.NEXT_PUBLIC_DATA_SVC_URL ?? "http://localhost:10006";
 
 // ── 工具函数 ──
 

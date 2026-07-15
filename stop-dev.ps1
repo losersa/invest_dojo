@@ -16,7 +16,7 @@ param(
 Write-Host "`n====== 停止 InvestDojo 开发环境 ======" -ForegroundColor Cyan
 
 # ── 停掉端口上的进程 ──
-$ports = @(3000, 8001, 8002, 8003, 8004, 8005, 8006)
+$ports = @(3000, 10001, 10002, 10003, 10004, 10005, 10006)
 foreach ($port in $ports) {
     $conns = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
     if ($conns) {

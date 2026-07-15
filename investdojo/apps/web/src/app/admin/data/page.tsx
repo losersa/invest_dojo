@@ -17,7 +17,7 @@ import Link from "next/link";
 import { MainNav } from "@/components/MainNav";
 import { createClient } from "@/lib/supabase/client";
 
-const DATA_SVC_URL = process.env.NEXT_PUBLIC_DATA_SVC_URL ?? "http://localhost:8006";
+const DATA_SVC_URL = process.env.NEXT_PUBLIC_DATA_SVC_URL ?? "http://localhost:10006";
 
 interface TableInfo {
   table: string;

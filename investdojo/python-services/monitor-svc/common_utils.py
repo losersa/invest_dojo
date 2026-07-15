@@ -33,7 +33,9 @@ class ServiceEntry:
 
 def get_registered_services() -> list[ServiceEntry]:
     """返回所有兄弟微服务。URL 从 settings.*_svc_port 推导。"""
-    host = "http://localhost"
+    # 用 127.0.0.1 而非 localhost：避免 Windows 上 localhost→::1 的 IPv6 探测卡顿，
+    # 也规避部分环境下 httpx 把 localhost 误走代理的问题（服务均绑定 0.0.0.0）。
+    host = "http://127.0.0.1"
     return [
         ServiceEntry(
             name="data-svc",
@@ -129,7 +131,8 @@ async def _probe_one(client: httpx.AsyncClient, svc: ServiceEntry) -> dict[str, 
 async def probe_all_services() -> list[dict[str, Any]]:
     """并发打所有 svc health"""
     services = get_registered_services()
-    async with httpx.AsyncClient() as client:
+    # trust_env=False：内部探测 localhost 兄弟服务，绝不走系统代理（否则 2s 超时）。
+    async with httpx.AsyncClient(trust_env=False) as client:
         tasks = [_probe_one(client, s) for s in services]
         return await asyncio.gather(*tasks)
 

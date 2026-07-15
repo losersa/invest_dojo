@@ -80,17 +80,24 @@ if (-not $SkipPython) {
         $env:PG_PASSWORD = $PG_PASSWORD
         $env:PYTHONPATH = $PY_SERVICES
 
+        # 端口说明：Windows WinNAT 保留了 7981-8080 段，原生 uvicorn 无法绑定 8001-8006，
+        # 故统一迁移到保留段之外的 10001-10006（data=10006，其余 10001-10005）。
         $svcList = @(
-            @{ Dir = "data-svc";     Port = 8006 },
-            @{ Dir = "feature-svc";  Port = 8001 },
-            @{ Dir = "train-svc";    Port = 8002 },
-            @{ Dir = "infer-svc";    Port = 8003 },
-            @{ Dir = "backtest-svc"; Port = 8004 },
-            @{ Dir = "monitor-svc";  Port = 8005 }
+            @{ Dir = "data-svc";     Port = 10006 },
+            @{ Dir = "feature-svc";  Port = 10001 },
+            @{ Dir = "train-svc";    Port = 10002 },
+            @{ Dir = "infer-svc";    Port = 10003 },
+            @{ Dir = "backtest-svc"; Port = 10004 },
+            @{ Dir = "monitor-svc";  Port = 10005 }
         )
 
         foreach ($svc in $svcList) {
             $workdir = Join-Path $PY_SERVICES $svc.Dir
+            # 把本服务端口导出为对应 env（如 DATA_SVC_PORT=10006），
+            # 让 config.py 的 settings.*_svc_port 与实际监听端口保持一致，
+            # monitor-svc 才能正确探测兄弟服务（避免误报 degraded）。
+            $envName = ($svc.Dir.ToUpper() -replace "-", "_") + "_PORT"
+            Set-Item -Path "env:$envName" -Value $svc.Port
             $proc = Start-Process -WindowStyle Hidden -PassThru `
                 -FilePath $VENV_PY `
                 -ArgumentList "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", $svc.Port, "--reload" `
@@ -123,12 +130,12 @@ Write-Host "`n等待服务就绪并做健康检查..." -ForegroundColor DarkGray
 Start-Sleep -Seconds 10
 
 $checks = @(
-    @{ Name = "feature-svc";  Url = "http://localhost:8001/health" },
-    @{ Name = "train-svc";    Url = "http://localhost:8002/health" },
-    @{ Name = "infer-svc";    Url = "http://localhost:8003/health" },
-    @{ Name = "backtest-svc"; Url = "http://localhost:8004/health" },
-    @{ Name = "monitor-svc";  Url = "http://localhost:8005/health" },
-    @{ Name = "data-svc";     Url = "http://localhost:8006/health" }
+    @{ Name = "feature-svc";  Url = "http://localhost:10001/health" },
+    @{ Name = "train-svc";    Url = "http://localhost:10002/health" },
+    @{ Name = "infer-svc";    Url = "http://localhost:10003/health" },
+    @{ Name = "backtest-svc"; Url = "http://localhost:10004/health" },
+    @{ Name = "monitor-svc";  Url = "http://localhost:10005/health" },
+    @{ Name = "data-svc";     Url = "http://localhost:10006/health" }
 )
 
 Write-Host "`n====== 健康检查 ======" -ForegroundColor Cyan
@@ -143,6 +150,6 @@ foreach ($c in $checks) {
 
 Write-Host "`n====== 启动完成 ======" -ForegroundColor Cyan
 Write-Host "  前端:      http://localhost:3000  (Next.js 冷启动约需 20s)" -ForegroundColor White
-Write-Host "  Kong 网关: http://localhost:8000" -ForegroundColor White
-Write-Host "  Python:    :8001-8006" -ForegroundColor White
+Write-Host "  Kong 网关: http://localhost:18080  (Windows WinNAT 保留 7981-8480，8000 无法绑定)" -ForegroundColor White
+Write-Host "  Python:    :10001-10006" -ForegroundColor White
 Write-Host ""

@@ -6,7 +6,7 @@
  * - NEXT_PUBLIC_DATA_SVC_URL     (K 线 / 场景)
  * - ...
  *
- * 本地 dev 时默认走 localhost:8000~8005
+ * 本地 dev 时默认走 localhost:10001~10006
  */
 import { createInvestDojoClient } from "@investdojo/api";
 import { createClient } from "@/lib/supabase/client";
@@ -49,12 +49,12 @@ export async function ensureUserId(): Promise<string | undefined> {
 
 export const sdk = createInvestDojoClient({
   baseURLs: {
-    data: process.env.NEXT_PUBLIC_DATA_SVC_URL ?? "http://localhost:8006",
-    feature: process.env.NEXT_PUBLIC_FEATURE_SVC_URL ?? "http://localhost:8001",
-    train: process.env.NEXT_PUBLIC_TRAIN_SVC_URL ?? "http://localhost:8002",
-    infer: process.env.NEXT_PUBLIC_INFER_SVC_URL ?? "http://localhost:8003",
-    backtest: process.env.NEXT_PUBLIC_BACKTEST_SVC_URL ?? "http://localhost:8004",
-    monitor: process.env.NEXT_PUBLIC_MONITOR_SVC_URL ?? "http://localhost:8005",
+    data: process.env.NEXT_PUBLIC_DATA_SVC_URL ?? "http://localhost:10006",
+    feature: process.env.NEXT_PUBLIC_FEATURE_SVC_URL ?? "http://localhost:10001",
+    train: process.env.NEXT_PUBLIC_TRAIN_SVC_URL ?? "http://localhost:10002",
+    infer: process.env.NEXT_PUBLIC_INFER_SVC_URL ?? "http://localhost:10003",
+    backtest: process.env.NEXT_PUBLIC_BACKTEST_SVC_URL ?? "http://localhost:10004",
+    monitor: process.env.NEXT_PUBLIC_MONITOR_SVC_URL ?? "http://localhost:10005",
   },
   userId: () => getCurrentUserId(),
   timeoutMs: 15_000,

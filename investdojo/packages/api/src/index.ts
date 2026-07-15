@@ -2,12 +2,15 @@
  * InvestDojo TypeScript SDK
  *
  * Base URL 约定（开发环境）：
- * - data-svc:     http://localhost:8000
- * - feature-svc:  http://localhost:8001
- * - train-svc:    http://localhost:8002
- * - infer-svc:    http://localhost:8003
- * - backtest-svc: http://localhost:8004
- * - monitor-svc:  http://localhost:8005
+ * - data-svc:     http://localhost:10006
+ * - feature-svc:  http://localhost:10001
+ * - train-svc:    http://localhost:10002
+ * - infer-svc:    http://localhost:10003
+ * - backtest-svc: http://localhost:10004
+ * - monitor-svc:  http://localhost:10005
+ *
+ * 注意：Windows WinNAT 保留了 7981-8080 端口段，原 8001-8006 无法被原生进程绑定，
+ * 故本地开发统一使用 10001-10006。
  *
  * 基本用法：
  * ```ts
@@ -67,12 +70,12 @@ export interface SDKBaseURLs {
 
 const DEFAULT_HOST = "http://localhost";
 const DEFAULT_PORTS = {
-  data: 8000,
-  feature: 8001,
-  train: 8002,
-  infer: 8003,
-  backtest: 8004,
-  monitor: 8005,
+  data: 10006,
+  feature: 10001,
+  train: 10002,
+  infer: 10003,
+  backtest: 10004,
+  monitor: 10005,
 } as const;
 
 function resolveBaseURLs(overrides?: SDKBaseURLs): Required<SDKBaseURLs> {

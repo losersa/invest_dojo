@@ -226,7 +226,7 @@ export default function OverviewPage() {
           {[
             { label: "Frontend", color: "var(--ov-blue)", chips: ["Next.js 15 :3000", "React 19", "Tailwind CSS 4", "@investdojo/api SDK"] },
             { label: "Python Microservices (FastAPI)", color: "var(--ov-green)", chips: ["data-svc :8006", "feature-svc :8001", "train-svc :8002", "infer-svc :8003", "backtest-svc :8004", "monitor-svc :8005"] },
-            { label: "Infrastructure (Docker)", color: "var(--ov-purple)", chips: ["PostgreSQL 15 :5432", "PostgREST", "GoTrue (Auth)", "Kong Gateway :8000", "Redis :6379", "MinIO :9000"] },
+            { label: "Infrastructure (Docker)", color: "var(--ov-purple)", chips: ["PostgreSQL 15 :5432", "PostgREST", "GoTrue (Auth)", "Kong Gateway :18080", "Redis :6379", "MinIO :9000"] },
           ].map((layer) => (
             <div key={layer.label} className="ov-layer" style={{ borderColor: layer.color, background: `${layer.color}08` }}>
               <div className="ov-label" style={{ color: layer.color, marginBottom: "0.6rem" }}>{layer.label}</div>
