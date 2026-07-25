@@ -69,6 +69,13 @@ if os.environ.get("ENABLE_DAILY_BEAT", "1") == "1":
             "schedule": crontab(hour=20, minute=0),  # 每天 20:00
             "options": {"queue": "feature"},
         },
+        # ⑤ 每周全量回跑近 30 天因子（自愈：修正漏算/脏数据；新增因子自动覆盖）
+        "weekly-full-factor-recompute": {
+            "task": "feature.weekly_recompute",
+            "schedule": crontab(hour=3, minute=0, day_of_week="6"),  # 周六 03:00
+            "kwargs": {"days": 30},
+            "options": {"queue": "feature"},
+        },
     }
 else:
     celery_app.conf.beat_schedule = {}

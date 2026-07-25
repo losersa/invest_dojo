@@ -379,6 +379,70 @@ def collect_daily_metrics_task(
     return {"ok": True, "written": written}
 
 
+@celery_app.task(name="feature.weekly_recompute", bind=True, queue="feature")
+def weekly_recompute_task(self, days: int = 30) -> dict[str, Any]:
+    """每周全量回跑近 N 天因子（自愈：修正漏算/脏数据/历史漂移）。
+
+    每周六 03:00 Beat 调度。内部按 7 天分段串行调 compute_and_save
+    （幂等 upsert），控制单任务时长在 1h 上限内。
+    新增因子自动被覆盖（每次运行从 factor_definitions 动态拉取全量公开因子）。
+    """
+    t0 = time.monotonic()
+    end = (datetime.now(UTC) - timedelta(days=1)).date()  # 昨天（今天可能未收盘）
+    start = end - timedelta(days=days - 1)
+
+    logger.info(
+        "feature.weekly_recompute.start",
+        celery_task_id=self.request.id,
+        start=str(start),
+        end=str(end),
+    )
+    segments: list[dict[str, Any]] = []
+    failed = False
+    seg_start = start
+    while seg_start <= end and not failed:
+        seg_end = min(seg_start + timedelta(days=6), end)
+        try:
+            r = compute_and_save(
+                start=seg_start.isoformat(),
+                end=seg_end.isoformat(),
+            )
+            segments.append(
+                {
+                    "start": seg_start.isoformat(),
+                    "end": seg_end.isoformat(),
+                    "records_written": r.get("records_written"),
+                }
+            )
+        except Exception as e:  # noqa: BLE001
+            failed = True
+            segments.append(
+                {
+                    "start": seg_start.isoformat(),
+                    "end": seg_end.isoformat(),
+                    "error": str(e)[:300],
+                }
+            )
+        seg_start = seg_end + timedelta(days=1)
+
+    status = "failed" if failed else "success"
+    _record_run(
+        "feature.weekly_recompute",
+        status,
+        {"start": str(start), "end": str(end), "segments": segments},
+        t0,
+    )
+    logger.info(
+        "feature.weekly_recompute.done",
+        celery_task_id=self.request.id,
+        status=status,
+        segments=len(segments),
+    )
+    if failed:
+        raise RuntimeError(f"weekly_recompute 分段失败: {segments[-1]}")
+    return {"ok": True, "start": str(start), "end": str(end), "segments": segments}
+
+
 @celery_app.task(name="feature.health", queue="feature")
 def feature_health() -> dict:
     """health check"""

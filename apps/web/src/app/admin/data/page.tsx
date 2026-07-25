@@ -684,6 +684,7 @@ const ROUTINE_TASKS: Array<{ name: string; label: string }> = [
   { name: "feature.update_market_snapshots", label: "市场快照" },
   { name: "feature.compute_incremental", label: "因子增量" },
   { name: "feature.collect_daily_metrics", label: "每日汇总" },
+  { name: "feature.weekly_recompute", label: "每周回跑" },
 ];
 
 const METRIC_ROWS: Array<{ metric: string; label: string }> = [
