@@ -15,6 +15,9 @@
 - **验证**：`git log` 历史连通；`.gitignore` 补充排除运行时产物（logs/.venv/.task_history 等）。
 - **推送**：已配置 HTTPS PAT 凭证并推送成功 → 远程新分支 `devcloud-snapshot`（2026-07-25）；
   之后日常改动高频 `git commit` 并推送。
+- **合并 main**（2026-07-25）：保留外层有价值资产（investdojo-dev skill、CI workflows、
+  pre-commit）后，main 快进至 `378e48e`；远程 main 结构统一为 devcloud 工作区结构
+  （investdojo/ 子目录提升为根）；日常推送命令 `git push origin master:main`。
 
 ---
 
