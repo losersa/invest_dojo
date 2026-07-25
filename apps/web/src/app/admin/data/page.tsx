@@ -962,12 +962,23 @@ function RoutineSection({ userId, userRole }: { userId: string; userRole: string
                     {dayList.map((d, i) => {
                       const v = values[i];
                       const m = metricMap.get(`${metric}|${d}`);
-                      const intensity = v === null ? 0 : Math.max(0.12, (v ?? 0) / max);
+                      // 对数归一化：log(v+1)/log(max+1)，量小也可见
+                      // （线性归一在 281 vs 45万 这类差距下小值几乎隐形）
+                      const ratio =
+                        v === null || v === 0 ? 0 : Math.log(v + 1) / Math.log(max + 1);
+                      // 色阶分档（5 档），深浅随数据量
+                      const LEVELS = [0.2, 0.4, 0.6, 0.8, 1];
+                      const opacity =
+                        v === null
+                          ? 0.15
+                          : v === 0
+                            ? 1
+                            : LEVELS[Math.min(LEVELS.length - 1, Math.floor(ratio * LEVELS.length))];
                       return (
                         <div
                           key={d}
                           title={`${d}\n${v === null ? "未采集" : `${v.toLocaleString()} 行${m?.symbols_covered ? ` · ${m.symbols_covered} 只` : ""}`}`}
-                          style={{ opacity: v === null ? 0.15 : intensity }}
+                          style={{ opacity }}
                           className={`h-5 flex-1 rounded-[2px] ${
                             v === 0 ? "bg-zinc-700" : "bg-rc-blue"
                           }`}
