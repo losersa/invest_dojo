@@ -14,7 +14,9 @@ import { MainNav } from "@/components/MainNav";
 import { useCurrentUser, isStaff } from "@/hooks/useCurrentUser";
 import Link from "next/link";
 
-const DATA_SVC_URL = process.env.NEXT_PUBLIC_DATA_SVC_URL ?? "http://localhost:10006";
+// 同源代理（middleware 转发 data-svc）——远程浏览器里 localhost 指向用户自己电脑，
+// 裸 fetch localhost:8006 必然失败（排障手册 ## 0），一律走 /svc/data。
+const DATA_SVC_URL = "/svc/data";
 
 interface Column { name: string; type: string; nullable: boolean; default: string | null }
 interface TableSchema { name: string; columns: Column[]; row_estimate?: number }
@@ -37,9 +39,12 @@ export default function SQLQueryPage() {
   useEffect(() => {
     if (!user || !isStaff(user)) return;
     fetch(`${DATA_SVC_URL}/api/v1/data/admin/data/schema`, { headers })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((json) => setTables(json.tables || []))
-      .catch(() => {});
+      .catch((e) => setQueryError(`表结构加载失败：${e instanceof Error ? e.message : String(e)}`));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 

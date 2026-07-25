@@ -17,7 +17,9 @@ import Link from "next/link";
 import { MainNav } from "@/components/MainNav";
 import { createClient } from "@/lib/supabase/client";
 
-const DATA_SVC_URL = process.env.NEXT_PUBLIC_DATA_SVC_URL ?? "http://localhost:10006";
+// 同源代理（middleware 转发 data-svc）——远程浏览器里 localhost 指向用户自己电脑，
+// 裸 fetch localhost:8006 必然失败（排障手册 ## 0），一律走 /svc/data。
+const DATA_SVC_URL = "/svc/data";
 
 interface TableInfo {
   table: string;
