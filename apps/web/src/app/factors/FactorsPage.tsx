@@ -1,0 +1,477 @@
+"use client";
+
+// ============================================================
+// 因子库列表页 — Raycast Design System
+// 分类侧栏 + 搜索 + 标签筛选 + 因子卡片网格 + 分页
+// ============================================================
+
+import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { ApiError, type Factor, type FactorCategory, type FactorCategoryCount } from "@investdojo/api";
+import { sdk, ensureUserId } from "@/lib/sdk";
+import { MainNav } from "@/components/MainNav";
+import { useFavoriteFactors } from "@/hooks/useFavoriteFactors";
+import { createClient } from "@/lib/supabase/client";
+
+const PAGE_SIZE = 24;
+
+const CATEGORY_META: Record<FactorCategory | "all", { label: string; icon: string }> = {
+  all: { label: "全部", icon: "🗂️" },
+  technical: { label: "技术面", icon: "📈" },
+  valuation: { label: "估值", icon: "💰" },
+  growth: { label: "成长", icon: "🌱" },
+  sentiment: { label: "情绪", icon: "🔥" },
+  fundamental: { label: "基本面", icon: "🏛️" },
+  macro: { label: "宏观", icon: "🌐" },
+  custom: { label: "自定义", icon: "⚙️" },
+};
+
+const OUTPUT_TYPE_LABEL: Record<string, string> = {
+  boolean: "信号",
+  scalar: "数值",
+  rank: "排名",
+};
+
+export function FactorsPage() {
+  // 筛选状态
+  const [activeCategory, setActiveCategory] = useState<FactorCategory | "all">("all");
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  // source: all=全部公开, platform=官方, community=用户发布(公开), mine=我的因子
+  const [source, setSource] = useState<"all" | "platform" | "community" | "mine">("all");
+  const [sort, setSort] = useState("-updated_at");
+  const [outputType, setOutputType] = useState<"all" | "boolean" | "scalar" | "rank">("all");
+  const [page, setPage] = useState(1);
+
+  // 当前用户
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setCurrentUserId(session?.user?.id ?? null);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setCurrentUserId(session?.user?.id ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // 数据
+  const [factors, setFactors] = useState<Factor[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [categories, setCategories] = useState<FactorCategoryCount[]>([]);
+
+  // 首次加载 categories
+  useEffect(() => {
+    sdk.factors
+      .listCategories()
+      .then((res) => setCategories(res.data))
+      .catch(() => {
+        /* 分类加载失败不致命 */
+      });
+  }, []);
+
+  // 搜索防抖
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // 取因子列表
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError(null);
+
+    // 根据来源计算 API 参数
+    let ownerParam: string;
+    let visibilityParam: "public" | "private" | "all";
+    if (source === "platform") {
+      ownerParam = "platform";
+      visibilityParam = "public";
+    } else if (source === "community") {
+      ownerParam = "user";
+      visibilityParam = "public";
+    } else if (source === "mine" && currentUserId) {
+      ownerParam = currentUserId;
+      visibilityParam = "all"; // 自己的因子全部可见
+    } else {
+      // all — 或者 mine 但未登录 fallback
+      ownerParam = "all";
+      visibilityParam = "public";
+    }
+
+    const doFetch = async () => {
+      await ensureUserId();
+      return sdk.factors.listFactors({
+        category: activeCategory === "all" ? undefined : activeCategory,
+        owner: ownerParam,
+        visibility: visibilityParam,
+        search: search || undefined,
+        output_type: outputType === "all" ? undefined : outputType,
+        sort,
+        include_stats: false,
+        page,
+        page_size: PAGE_SIZE,
+      });
+    };
+
+    doFetch()
+      .then((res) => {
+        if (!alive) return;
+        setFactors(res.data);
+        setTotal(res.pagination.total);
+      })
+      .catch((e: unknown) => {
+        if (!alive) return;
+        setError(e instanceof ApiError ? `[${e.code}] ${e.message}` : String(e));
+        setFactors([]);
+        setTotal(0);
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [activeCategory, search, source, outputType, currentUserId, sort, page]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const categoryList = useMemo(() => {
+    const totalCount = categories.reduce((s, c) => s + c.count, 0);
+    return [
+      { category: "all" as const, label: "全部", count: totalCount },
+      ...categories,
+    ];
+  }, [categories]);
+
+  return (
+    <div className="min-h-screen bg-rc-bg">
+      {/* Nav */}
+      <MainNav />
+
+      {/* Hero */}
+      <section className="text-center px-6 pt-[60px] pb-[40px]">
+        <h1 className="text-section-display text-white">量化因子库</h1>
+        <p className="mt-3 text-body-lg text-rc-text-secondary max-w-[640px] mx-auto">
+          {total > 0 ? `${total} 个` : "200+"} 可计算因子 · 技术面 / 基本面 / 估值 / 成长 / 情绪全覆盖
+        </p>
+        <div className="mt-4 flex items-center justify-center gap-3">
+          <Link
+            href="/factors/new"
+            className="inline-block bg-white text-black px-5 py-2 rounded-[8px] text-[14px] font-medium hover:bg-[#ddd] transition"
+          >
+            + 创建自定义因子
+          </Link>
+          <Link
+            href="/factors/compare"
+            className="inline-block bg-rc-surface-input border border-rc-border-input text-rc-text-primary px-5 py-2 rounded-[8px] text-[14px] font-medium hover:border-rc-blue hover:text-rc-blue transition"
+          >
+            ⚖ 因子对比
+          </Link>
+        </div>
+      </section>
+
+      {/* Main */}
+      <section className="max-w-[1400px] mx-auto px-6 pb-[100px]">
+        <div className="grid grid-cols-[220px_1fr] gap-8">
+          {/* ── Sidebar ── */}
+          <aside className="sticky top-[80px] self-start">
+            <h3 className="text-[12px] uppercase tracking-[0.3px] text-rc-text-dim font-rc-mono mb-3">
+              分类
+            </h3>
+            <div className="flex flex-col gap-1">
+              {categoryList.map((c) => {
+                const meta =
+                  CATEGORY_META[(c.category as FactorCategory | "all") ?? "custom"] ??
+                  CATEGORY_META.custom;
+                const active = activeCategory === c.category;
+                return (
+                  <button
+                    key={c.category}
+                    onClick={() => {
+                      setActiveCategory(c.category as FactorCategory | "all");
+                      setPage(1);
+                    }}
+                    className={`text-left px-3 py-2 rounded-[6px] flex items-center justify-between transition-colors duration-150 ${
+                      active
+                        ? "bg-rc-surface-card text-white"
+                        : "text-rc-text-muted hover:text-white hover:bg-rc-surface-100"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 text-[14px] tracking-[0.2px]">
+                      <span>{meta.icon}</span>
+                      {meta.label}
+                    </span>
+                    <span className="text-[12px] font-rc-mono text-rc-text-dim">{c.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <h3 className="text-[12px] uppercase tracking-[0.3px] text-rc-text-dim font-rc-mono mt-6 mb-3">
+              来源
+            </h3>
+            <div className="flex flex-col gap-1">
+              {(
+                [
+                  { key: "all" as const, label: "全部", icon: "🗂️" },
+                  { key: "platform" as const, label: "官方因子", icon: "⭐" },
+                  { key: "community" as const, label: "用户发布", icon: "🌐" },
+                  { key: "mine" as const, label: "我的因子", icon: "👤", needLogin: true },
+                ]
+              ).map((o) => {
+                if (o.needLogin && !currentUserId) return null;
+                const active = source === o.key;
+                return (
+                  <button
+                    key={o.key}
+                    onClick={() => {
+                      setSource(o.key);
+                      setPage(1);
+                    }}
+                    className={`text-left px-3 py-2 rounded-[6px] text-[14px] tracking-[0.2px] transition-colors duration-150 flex items-center gap-2 ${
+                      active
+                        ? "bg-rc-surface-card text-white"
+                        : "text-rc-text-muted hover:text-white hover:bg-rc-surface-100"
+                    }`}
+                  >
+                    <span>{o.icon}</span>
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+
+          {/* ── Content ── */}
+          <div>
+            {/* Toolbar */}
+            <div className="flex items-center gap-3 mb-5">
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="🔎 搜索因子名 / 描述（如 双均线、ROE、放量）"
+                  className="w-full bg-rc-surface-input border border-rc-border-input rounded-[8px] px-4 py-2.5 text-[14px] text-rc-text-primary placeholder:text-rc-text-dim focus:outline-none focus:border-rc-blue transition-colors"
+                />
+              </div>
+              <select
+                value={sort}
+                onChange={(e) => {
+                  setSort(e.target.value);
+                  setPage(1);
+                }}
+                className="bg-rc-surface-input border border-rc-border-input rounded-[8px] px-3 py-2.5 text-[14px] text-rc-text-secondary focus:outline-none focus:border-rc-blue"
+              >
+                <option value="-updated_at">最近更新</option>
+                <option value="-created_at">最新创建</option>
+                <option value="name">名称 A→Z</option>
+                <option value="-version">版本高→低</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-rc-mono text-rc-text-dim uppercase tracking-[0.3px] mr-1">
+                类型
+              </span>
+              {(["all", "boolean", "scalar", "rank"] as const).map((ot) => {
+                const active = outputType === ot;
+                const label = ot === "all" ? "全部" : OUTPUT_TYPE_LABEL[ot] ?? ot;
+                return (
+                  <button
+                    key={ot}
+                    onClick={() => {
+                      setOutputType(ot);
+                      setPage(1);
+                    }}
+                    className={`px-3 py-1.5 rounded-[6px] text-[12px] border transition ${
+                      active
+                        ? "border-rc-blue/50 bg-rc-blue/5 text-white"
+                        : "border-rc-border-input text-rc-text-dim hover:text-rc-text-secondary"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+              <Link
+                href="/factors/explorer"
+                className="rc-btn-primary px-4 py-2.5 text-[13px] whitespace-nowrap ml-2"
+              >
+                📊 因子数据浏览器
+              </Link>
+            </div>
+
+            {/* State */}
+            {error && (
+              <div className="rc-card border-rc-red/40 text-rc-red text-[14px] mb-5">
+                加载失败：{error}
+              </div>
+            )}
+
+            {loading ? (
+              <FactorGridSkeleton />
+            ) : factors.length === 0 ? (
+              <div className="rc-card text-center py-16 text-rc-text-dim">
+                {search ? (
+                  `未找到匹配 "${search}" 的因子`
+                ) : source === "mine" ? (
+                  <div>
+                    <p className="mb-3">你还没有创建任何因子</p>
+                    <Link
+                      href="/factors/new"
+                      className="inline-block bg-white text-black px-4 py-2 rounded-[8px] text-[13px] font-medium hover:bg-[#ddd] transition"
+                    >
+                      + 创建第一个因子
+                    </Link>
+                  </div>
+                ) : source === "community" ? (
+                  "还没有用户发布的公开因子"
+                ) : (
+                  "暂无因子"
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {factors.map((f) => (
+                  <FactorCard key={f.id} factor={f} />
+                ))}
+              </div>
+            )}
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-8">
+                <button
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  className="px-3 py-1.5 rounded-[6px] border border-rc-border-btn text-[14px] text-rc-text-secondary disabled:opacity-30 hover:bg-rc-surface-100"
+                >
+                  ← 上一页
+                </button>
+                <span className="text-[13px] font-rc-mono text-rc-text-muted px-3">
+                  {page} / {totalPages}
+                </span>
+                <button
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  className="px-3 py-1.5 rounded-[6px] border border-rc-border-btn text-[14px] text-rc-text-secondary disabled:opacity-30 hover:bg-rc-surface-100"
+                >
+                  下一页 →
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────
+// Card
+// ────────────────────────────────────────────
+
+function FactorCard({ factor }: { factor: Factor }) {
+  const meta = CATEGORY_META[factor.category] ?? CATEGORY_META.custom;
+  const isPlatform = factor.owner === "platform";
+  const { isFavorite, toggleFavorite } = useFavoriteFactors();
+  const faved = isFavorite(factor.id);
+
+  return (
+    <div className="group rc-card-feature p-5 transition-all duration-150 hover:translate-y-[-2px] hover:border-rc-blue/40 relative">
+      {/* 收藏按钮 */}
+      <button
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(factor.id); }}
+        className={`absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-full transition z-10 ${
+          faved
+            ? "text-red-400 bg-red-400/10 hover:bg-red-400/20"
+            : "text-[#555] hover:text-red-400 hover:bg-red-400/10"
+        }`}
+        title={faved ? "取消收藏" : "收藏此因子"}
+      >
+        {faved ? "♥" : "♡"}
+      </button>
+
+      <Link
+        href={`/factors/${encodeURIComponent(factor.id)}`}
+        className="block"
+      >
+      {/* Row 1: 分类 + output_type + 版本 */}
+      <div className="flex items-center justify-between mb-3">
+        <span className="rc-badge text-[11px] tracking-[0.2px] inline-flex items-center gap-1">
+          <span>{meta.icon}</span>
+          {meta.label}
+        </span>
+        <div className="flex items-center gap-2 text-[11px] font-rc-mono">
+          <span className="text-rc-blue">{OUTPUT_TYPE_LABEL[factor.output_type] ?? factor.output_type}</span>
+          <span className="text-rc-text-dim">v{factor.version}</span>
+        </div>
+      </div>
+
+      {/* Name */}
+      <h3 className="text-[16px] font-medium text-white leading-snug mb-1 tracking-[0.2px] group-hover:text-rc-blue transition-colors">
+        {factor.name}
+      </h3>
+      {factor.name_en && (
+        <p className="text-[11px] font-rc-mono text-rc-text-dim mb-2">{factor.name_en}</p>
+      )}
+
+      {/* Description */}
+      <p className="text-[13px] text-rc-text-secondary leading-relaxed line-clamp-2 min-h-[34px]">
+        {factor.description || <span className="text-rc-text-dim">（无描述）</span>}
+      </p>
+
+      {/* Formula preview */}
+      <pre className="mt-3 px-3 py-2 rounded-[6px] bg-rc-surface-input border border-rc-border-subtle text-[11px] font-rc-mono text-rc-text-tertiary overflow-hidden whitespace-nowrap text-ellipsis">
+        {factor.formula}
+      </pre>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between mt-3 text-[11px] text-rc-text-muted">
+        <div className="flex items-center gap-2 min-w-0">
+          {factor.tags.slice(0, 2).map((tag) => (
+            <span
+              key={tag}
+              className="px-1.5 py-0.5 rounded-[4px] bg-rc-surface-card text-rc-text-muted border border-rc-border-subtle truncate max-w-[80px]"
+            >
+              #{tag}
+            </span>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 font-rc-mono text-rc-text-dim shrink-0">
+          {!isPlatform && factor.visibility === "private" && (
+            <span className="px-1.5 py-0.5 rounded-[4px] bg-yellow-900/20 text-yellow-400 border border-yellow-700/30 text-[10px]">
+              私有
+            </span>
+          )}
+          {!isPlatform && factor.visibility === "public" && (
+            <span className="px-1.5 py-0.5 rounded-[4px] bg-green-900/20 text-green-400 border border-green-700/30 text-[10px]">
+              已发布
+            </span>
+          )}
+          <span>{isPlatform ? "⭐ 官方" : `👤 ${factor.owner.slice(0, 8)}`}</span>
+        </div>
+      </div>
+      </Link>
+    </div>
+  );
+}
+
+function FactorGridSkeleton() {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      {Array.from({ length: 9 }).map((_, i) => (
+        <div key={i} className="rc-card h-[200px] animate-pulse" />
+      ))}
+    </div>
+  );
+}

@@ -1,4 +1,35 @@
-# 运行时日志（start-dev.ps1 启动前端时生成）
-fe.log
-fe.err.log
-*.log
+# dependencies
+node_modules
+.pnpm-store
+
+# build outputs
+dist
+.next
+.turbo
+out
+
+# env files
+.env
+.env.local
+.env.*.local
+# 中心化凭证（位于 ~/.investdojo.env，默认在工作区外；这里加一道双保险）
+.investdojo.env
+investdojo.env
+
+# platform builds
+src-tauri/target
+android
+ios
+
+# misc
+.DS_Store
+*.tsbuildinfo
+
+# devcloud runtime
+logs/
+celerybeat-schedule
+python-services/.venv/
+python-services/.task_history/
+apps/web/.next/
+__pycache__/
+*.pyc
