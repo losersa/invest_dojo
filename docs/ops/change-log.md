@@ -6,6 +6,18 @@
 
 ---
 
+## 2026-07-25（补）· git 版本管理恢复
+
+- **改动**：工作区重建 git 管理——`git init` + 关联远程 `github.com/losersa/invest_dojo`
+  （确认项目确为该仓库 clone，`.git` 在磁盘事故中丢失）；`git add -A` 时 git 自动识别出
+  245 项 rename（远程 `investdojo/` 子目录 = 工作区根），以 `origin/main`(7962e5a, 07-17)
+  为父提交快照提交（ef63ba2），49 提交历史完整保留。
+- **验证**：`git log` 历史连通；`.gitignore` 补充排除运行时产物（logs/.venv/.task_history 等）。
+- **推送**：已配置 HTTPS PAT 凭证并推送成功 → 远程新分支 `devcloud-snapshot`（2026-07-25）；
+  之后日常改动高频 `git commit` 并推送。
+
+---
+
 ## 2026-07-25 · 告警中心 + 训练页因子修复 + 5m K线管线 + 磁盘事故 + 快照回滚重建
 
 > ⚠️ 本日工作区曾因 devcloud 磁盘扩容被快照回滚，全部改动丢失后按记录重建
