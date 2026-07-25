@@ -9,7 +9,7 @@
  * 路由：/admin/data/sql
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MainNav } from "@/components/MainNav";
 import { useCurrentUser, isStaff } from "@/hooks/useCurrentUser";
 import Link from "next/link";
@@ -22,6 +22,89 @@ interface Column { name: string; type: string; nullable: boolean; default: strin
 interface TableSchema { name: string; columns: Column[]; row_estimate?: number }
 interface QueryResult { columns: string[]; rows: Record<string, unknown>[]; row_count: number; truncated: boolean }
 
+// ── SQL 语法高亮与校验（零依赖：透明 textarea + 着色 overlay）──
+const SQL_KEYWORDS = new Set([
+  "SELECT", "FROM", "WHERE", "AND", "OR", "NOT", "IN", "IS", "NULL", "LIKE", "ILIKE",
+  "BETWEEN", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "FULL", "CROSS", "ON", "AS",
+  "GROUP", "BY", "ORDER", "HAVING", "LIMIT", "OFFSET", "DISTINCT", "UNION", "ALL",
+  "CASE", "WHEN", "THEN", "ELSE", "END", "WITH", "ASC", "DESC", "EXISTS", "ANY",
+  "COUNT", "SUM", "AVG", "MIN", "MAX", "COALESCE", "CAST", "NULLIF", "NOW", "INTERVAL",
+]);
+// 与后端 _FORBIDDEN_PATTERNS 对齐：本工具只允许只读 SELECT
+const FORBIDDEN_RE = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|EXECUTE|COPY|VACUUM|CALL|DO)\b/i;
+
+/** 简单 tokenizer：注释 > 字符串 > 关键字 > 数字 > 其他，返回着色片段 */
+function highlightSql(code: string): React.ReactNode[] {
+  const re = /(--[^\n]*|\/\*[\s\S]*?\*\/)|('(?:[^'\\]|\\.|'')*')|\b([A-Za-z_][A-Za-z0-9_]*)\b|(\b\d+(?:\.\d+)?\b)/g;
+  const out: React.ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = re.exec(code)) !== null) {
+    if (m.index > last) out.push(<span key={i++}>{code.slice(last, m.index)}</span>);
+    const [full, comment, str, word, num] = m;
+    if (comment) {
+      out.push(<span key={i++} className="text-[#555] italic">{full}</span>);
+    } else if (str) {
+      out.push(<span key={i++} className="text-emerald-400/90">{full}</span>);
+    } else if (word) {
+      const upper = word.toUpperCase();
+      if (FORBIDDEN_RE.test(word)) {
+        out.push(<span key={i++} className="text-red-400 font-bold underline decoration-wavy">{full}</span>);
+      } else if (SQL_KEYWORDS.has(upper)) {
+        out.push(<span key={i++} className="text-rc-blue">{full}</span>);
+      } else {
+        out.push(<span key={i++}>{full}</span>);
+      }
+    } else if (num) {
+      out.push(<span key={i++} className="text-amber-400/90">{full}</span>);
+    }
+    last = m.index + full.length;
+  }
+  if (last < code.length) out.push(<span key={i++}>{code.slice(last)}</span>);
+  return out;
+}
+
+interface SqlCheck { level: "error" | "warn" | "ok"; messages: string[] }
+
+/** 本地语法校验：括号/引号配对（忽略字符串与注释内）、写操作关键字、非 SELECT 开头 */
+function validateSql(code: string): SqlCheck {
+  const messages: string[] = [];
+  const trimmed = code.trim();
+  if (!trimmed) return { level: "ok", messages };
+
+  // 剥离字符串与注释后做配对/关键字检查
+  const stripped = code
+    .replace(/--[^\n]*/g, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/'(?:[^'\\]|\\.|'')*'/g, "''");
+
+  const forbid = stripped.match(FORBIDDEN_RE);
+  if (forbid) {
+    messages.push(`检测到写操作关键字 ${forbid[1].toUpperCase()}（本工具仅允许 SELECT 只读查询）`);
+    return { level: "error", messages };
+  }
+  let depth = 0;
+  for (const ch of stripped) {
+    if (ch === "(") depth += 1;
+    if (ch === ")") depth -= 1;
+    if (depth < 0) break;
+  }
+  if (depth !== 0) {
+    messages.push(depth > 0 ? `括号不配对：有 ${depth} 个未闭合的 "("` : "括号不配对：\")\" 多于 \"(\"");
+    return { level: "error", messages };
+  }
+  if ((code.match(/'/g) ?? []).length % 2 !== 0) {
+    messages.push("字符串单引号未闭合");
+    return { level: "error", messages };
+  }
+  if (!/^(SELECT|WITH)\b/i.test(trimmed)) {
+    messages.push("查询不是以 SELECT / WITH 开头，后端会拒绝执行");
+    return { level: "warn", messages };
+  }
+  return { level: "ok", messages: ["语法检查通过"] };
+}
+
 export default function SQLQueryPage() {
   const { user, loading: authLoading } = useCurrentUser();
   const [tables, setTables] = useState<TableSchema[]>([]);
@@ -31,7 +114,28 @@ export default function SQLQueryPage() {
   const [queryLoading, setQueryLoading] = useState(false);
   const [queryError, setQueryError] = useState<string | null>(null);
   const [queryTime, setQueryTime] = useState<number>(0);
+  const [selRange, setSelRange] = useState<{ start: number; end: number } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const highlightRef = useRef<HTMLPreElement>(null);
+
+  // 本地语法校验（输入实时）
+  const check = useMemo(() => validateSql(sql), [sql]);
+  // 选中部分（有选中时执行选中片段而非全部）
+  const selectedSql = useMemo(() => {
+    if (!selRange || selRange.start === selRange.end) return null;
+    const t = sql.slice(selRange.start, selRange.end).trim();
+    return t || null;
+  }, [selRange, sql]);
+
+  // 高亮层滚动同步
+  const syncScroll = () => {
+    const ta = textareaRef.current;
+    const pre = highlightRef.current;
+    if (ta && pre) {
+      pre.scrollTop = ta.scrollTop;
+      pre.scrollLeft = ta.scrollLeft;
+    }
+  };
 
   const headers: Record<string, string> = user ? { "X-User-Id": user.id, "X-User-Role": user.role } : {};
 
@@ -48,9 +152,16 @@ export default function SQLQueryPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // 执行查询
+  // 执行查询（有选中时只执行选中片段）
   const executeQuery = useCallback(async () => {
-    if (!sql.trim() || !user) return;
+    const toRun = (selectedSql ?? sql).trim();
+    if (!toRun || !user) return;
+    // 执行前本地校验（选中片段若含写操作关键字直接拦截，不打扰后端）
+    const localCheck = validateSql(toRun);
+    if (localCheck.level === "error") {
+      setQueryError(localCheck.messages.join("；"));
+      return;
+    }
     setQueryLoading(true);
     setQueryError(null);
     const t0 = performance.now();
@@ -58,7 +169,7 @@ export default function SQLQueryPage() {
       const resp = await fetch(`${DATA_SVC_URL}/api/v1/data/admin/data/sql`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ sql: sql.trim(), limit: 200 }),
+        body: JSON.stringify({ sql: toRun, limit: 200 }),
       });
       const json = await resp.json();
       if (!resp.ok) {
@@ -73,7 +184,7 @@ export default function SQLQueryPage() {
       setQueryLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sql, user]);
+  }, [sql, selectedSql, user]);
 
   // Ctrl+Enter 执行
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -220,27 +331,66 @@ export default function SQLQueryPage() {
             ))}
           </div>
 
-          {/* SQL 输入 */}
-          <div className="relative mb-3">
-            <textarea
-              ref={textareaRef}
-              value={sql}
-              onChange={(e) => setSql(e.target.value)}
-              onKeyDown={handleKeyDown}
-              rows={6}
-              className="w-full bg-[#0a0a0a] border border-[#222] rounded-[8px] px-4 py-3 text-[13px] font-rc-mono text-rc-text-primary focus:outline-none focus:border-rc-blue resize-y"
-              placeholder="输入 SELECT 查询..."
-              spellCheck={false}
-            />
-            <div className="absolute bottom-2 right-2 flex items-center gap-2">
-              <span className="text-[10px] text-rc-text-dim">Ctrl+Enter 执行</span>
-              <button
-                onClick={executeQuery}
-                disabled={queryLoading || !sql.trim()}
-                className="px-3 py-1 rounded-[6px] text-[12px] font-medium bg-rc-blue/10 border border-rc-blue/30 text-rc-blue hover:bg-rc-blue/20 transition disabled:opacity-40"
+          {/* SQL 编辑器（透明 textarea + 着色 overlay） */}
+          <div className="mb-3">
+            <div
+              className={`relative rounded-[8px] border transition-colors ${
+                check.level === "error"
+                  ? "border-red-500/60"
+                  : check.level === "warn"
+                    ? "border-amber-500/60"
+                    : "border-[#222] focus-within:border-rc-blue"
+              }`}
+            >
+              {/* 着色 overlay（与 textarea 字体/padding 完全一致，文字透明显示着色层） */}
+              <pre
+                ref={highlightRef}
+                aria-hidden
+                className="absolute inset-0 overflow-auto whitespace-pre-wrap break-all rounded-[8px] bg-[#0a0a0a] px-4 py-3 text-[13px] font-rc-mono leading-[1.5] text-rc-text-primary pointer-events-none"
               >
-                {queryLoading ? "查询中..." : "▶ 执行"}
-              </button>
+                {highlightSql(sql)}
+                {"\n"}
+              </pre>
+              <textarea
+                ref={textareaRef}
+                value={sql}
+                onChange={(e) => { setSql(e.target.value); syncScroll(); }}
+                onScroll={syncScroll}
+                onSelect={(e) => {
+                  const t = e.currentTarget;
+                  setSelRange({ start: t.selectionStart, end: t.selectionEnd });
+                }}
+                onKeyDown={handleKeyDown}
+                rows={6}
+                className="relative w-full bg-transparent rounded-[8px] px-4 py-3 text-[13px] font-rc-mono leading-[1.5] text-transparent caret-white focus:outline-none resize-y selection:bg-rc-blue/30 selection:text-transparent"
+                placeholder="输入 SELECT 查询..."
+                spellCheck={false}
+              />
+              <div className="absolute bottom-2 right-2 flex items-center gap-2">
+                <span className="text-[10px] text-rc-text-dim">
+                  {selectedSql ? `Ctrl+Enter 执行选中（${selectedSql.length} 字符）` : "Ctrl+Enter 执行"}
+                </span>
+                <button
+                  onClick={executeQuery}
+                  disabled={queryLoading || !(selectedSql ?? sql).trim()}
+                  className="px-3 py-1 rounded-[6px] text-[12px] font-medium bg-rc-blue/10 border border-rc-blue/30 text-rc-blue hover:bg-rc-blue/20 transition disabled:opacity-40"
+                >
+                  {queryLoading ? "查询中..." : selectedSql ? "▶ 执行选中" : "▶ 执行"}
+                </button>
+              </div>
+            </div>
+            {/* 校验状态行（颜色指引） */}
+            <div
+              className={`mt-1.5 flex items-center gap-1.5 text-[11px] font-rc-mono ${
+                check.level === "error"
+                  ? "text-red-400"
+                  : check.level === "warn"
+                    ? "text-amber-400"
+                    : "text-emerald-500/80"
+              }`}
+            >
+              <span>{check.level === "error" ? "✗" : check.level === "warn" ? "⚠" : "✓"}</span>
+              <span>{check.messages.join("；")}</span>
             </div>
           </div>
 
