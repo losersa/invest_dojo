@@ -702,10 +702,15 @@ function fmtRows(n: number): string {
   return String(n);
 }
 
+// 例行巡检 API 走同源代理（/svc/data → data-svc），不依赖浏览器所在机器
+// （裸 fetch localhost:8006 在远程浏览器里指向用户自己电脑 → 必然失败，手册 ## 0）
+const ROUTINE_API = "/svc/data/api/v1/data/admin/data/routine";
+
 function RoutineSection({ userId, userRole }: { userId: string; userRole: string }) {
   const [runs, setRuns] = useState<RoutineRun[]>([]);
   const [metrics, setMetrics] = useState<DailyMetric[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [collecting, setCollecting] = useState(false);
   const [collectMsg, setCollectMsg] = useState<string | null>(null);
 
@@ -714,13 +719,18 @@ function RoutineSection({ userId, userRole }: { userId: string; userRole: string
   const load = useCallback(async () => {
     try {
       const [runsResp, metricsResp] = await Promise.all([
-        fetch(`${DATA_SVC_URL}/api/v1/data/admin/data/routine/runs?days=14`, { headers }),
-        fetch(`${DATA_SVC_URL}/api/v1/data/admin/data/routine/metrics?days=30`, { headers }),
+        fetch(`${ROUTINE_API}/runs?days=14`, { headers }),
+        fetch(`${ROUTINE_API}/metrics?days=30`, { headers }),
       ]);
-      if (runsResp.ok) setRuns((await runsResp.json()).data ?? []);
-      if (metricsResp.ok) setMetrics((await metricsResp.json()).data ?? []);
-    } catch {
-      // ignore
+      if (!runsResp.ok || !metricsResp.ok) {
+        setFetchError(`HTTP ${runsResp.status}/${metricsResp.status}`);
+      } else {
+        setRuns((await runsResp.json()).data ?? []);
+        setMetrics((await metricsResp.json()).data ?? []);
+        setFetchError(null);
+      }
+    } catch (e) {
+      setFetchError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
@@ -758,7 +768,7 @@ function RoutineSection({ userId, userRole }: { userId: string; userRole: string
     setCollecting(true);
     setCollectMsg(null);
     try {
-      const resp = await fetch(`${DATA_SVC_URL}/api/v1/data/admin/data/routine/collect?days=3`, {
+      const resp = await fetch(`${ROUTINE_API}/collect?days=3`, {
         method: "POST",
         headers,
       });
@@ -846,6 +856,10 @@ function RoutineSection({ userId, userRole }: { userId: string; userRole: string
         </div>
         {loading ? (
           <div className="text-[12px] text-rc-text-dim py-6 text-center">加载中…</div>
+        ) : fetchError ? (
+          <div className="text-[12px] text-rc-red py-6 text-center">
+            巡检数据加载失败：{fetchError}
+          </div>
         ) : (
           <div className="space-y-2">
             {METRIC_ROWS.map(({ metric, label }) => {
