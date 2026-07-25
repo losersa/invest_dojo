@@ -706,6 +706,15 @@ function fmtRows(n: number): string {
 // （裸 fetch localhost:8006 在远程浏览器里指向用户自己电脑 → 必然失败，手册 ## 0）
 const ROUTINE_API = "/svc/data/api/v1/data/admin/data/routine";
 
+// 快捷筛选档位：近 7/14/30/90 天 + 自定义区间
+const RANGE_PRESETS = [
+  { key: "7", label: "近 7 天" },
+  { key: "14", label: "近 14 天" },
+  { key: "30", label: "近 30 天" },
+  { key: "90", label: "近 90 天" },
+] as const;
+const CUSTOM_MAX_DAYS = 92; // 自定义区间上限（格点/条形列数可读性）
+
 function RoutineSection({ userId, userRole }: { userId: string; userRole: string }) {
   const [runs, setRuns] = useState<RoutineRun[]>([]);
   const [metrics, setMetrics] = useState<DailyMetric[]>([]);
@@ -713,14 +722,28 @@ function RoutineSection({ userId, userRole }: { userId: string; userRole: string
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [collecting, setCollecting] = useState(false);
   const [collectMsg, setCollectMsg] = useState<string | null>(null);
+  // 时间筛选：快捷档位 or 自定义区间
+  const [preset, setPreset] = useState<string>("14");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [appliedCustom, setAppliedCustom] = useState<{ start: string; end: string } | null>(null);
 
   const headers = { "X-User-Id": userId, "X-User-Role": userRole };
+  const isCustom = preset === "custom";
+
+  const query = isCustom && appliedCustom
+    ? `start=${appliedCustom.start}&end=${appliedCustom.end}`
+    : !isCustom
+      ? `days=${preset}`
+      : null; // custom 未点查询前不拉
 
   const load = useCallback(async () => {
+    if (!query) return;
+    setLoading(true);
     try {
       const [runsResp, metricsResp] = await Promise.all([
-        fetch(`${ROUTINE_API}/runs?days=14`, { headers }),
-        fetch(`${ROUTINE_API}/metrics?days=30`, { headers }),
+        fetch(`${ROUTINE_API}/runs?${query}`, { headers }),
+        fetch(`${ROUTINE_API}/metrics?${query}`, { headers }),
       ]);
       if (!runsResp.ok || !metricsResp.ok) {
         setFetchError(`HTTP ${runsResp.status}/${metricsResp.status}`);
@@ -735,7 +758,7 @@ function RoutineSection({ userId, userRole }: { userId: string; userRole: string
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, userRole]);
+  }, [userId, userRole, query]);
 
   useEffect(() => {
     load();
@@ -743,24 +766,29 @@ function RoutineSection({ userId, userRole }: { userId: string; userRole: string
     return () => clearInterval(timer);
   }, [load]);
 
-  // ── 状态格点表：近 14 天 × 4 任务 ──
-  const RUN_DAYS = 14;
-  const today = new Date();
-  const dayList: string[] = Array.from({ length: RUN_DAYS }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(d.getDate() - (RUN_DAYS - 1 - i));
-    return d.toISOString().slice(0, 10);
-  });
+  // 区间内的日期列表（两个图表共用；快捷档位=近 N 天，自定义=起止区间）
+  const dayList: string[] = (() => {
+    if (isCustom && appliedCustom) {
+      const out: string[] = [];
+      const d0 = new Date(`${appliedCustom.start}T00:00:00`);
+      const d1 = new Date(`${appliedCustom.end}T00:00:00`);
+      for (let d = new Date(d0); d <= d1 && out.length < CUSTOM_MAX_DAYS; d.setDate(d.getDate() + 1)) {
+        out.push(d.toISOString().slice(0, 10));
+      }
+      return out;
+    }
+    if (isCustom) return [];
+    const n = Number(preset);
+    const today = new Date();
+    return Array.from({ length: n }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() - (n - 1 - i));
+      return d.toISOString().slice(0, 10);
+    });
+  })();
+
   const runMap = new Map<string, RoutineRun>();
   for (const r of runs) runMap.set(`${r.task_name}|${r.run_date}`, r);
-
-  // ── 每日写入量：近 30 天 × 4 指标（行内各自归一化）──
-  const METRIC_DAYS = 30;
-  const metricDays: string[] = Array.from({ length: METRIC_DAYS }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(d.getDate() - (METRIC_DAYS - 1 - i));
-    return d.toISOString().slice(0, 10);
-  });
   const metricMap = new Map<string, DailyMetric>();
   for (const m of metrics) metricMap.set(`${m.metric}|${m.date}`, m);
 
@@ -788,7 +816,63 @@ function RoutineSection({ userId, userRole }: { userId: string; userRole: string
   return (
     <section className="mb-8">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-[14px] font-medium text-white">例行任务巡检</h2>
+        <div className="flex items-center gap-4">
+          <h2 className="text-[14px] font-medium text-white">例行任务巡检</h2>
+          {/* 时间筛选：快捷档位 + 自定义区间 */}
+          <div className="flex items-center gap-1.5 text-[12px]">
+            {RANGE_PRESETS.map((p) => (
+              <button
+                key={p.key}
+                onClick={() => { setPreset(p.key); setAppliedCustom(null); }}
+                className={`px-2 py-1 rounded-[5px] border transition ${
+                  preset === p.key
+                    ? "border-rc-blue bg-rc-blue/10 text-white"
+                    : "border-rc-border-subtle text-rc-text-muted hover:border-rc-border-input"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+            <button
+              onClick={() => setPreset("custom")}
+              className={`px-2 py-1 rounded-[5px] border transition ${
+                isCustom
+                  ? "border-rc-blue bg-rc-blue/10 text-white"
+                  : "border-rc-border-subtle text-rc-text-muted hover:border-rc-border-input"
+              }`}
+            >
+              自定义
+            </button>
+            {isCustom && (
+              <span className="flex items-center gap-1 ml-1">
+                <input
+                  type="date"
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  className="rc-input !w-[130px] !py-1 text-[11px]"
+                />
+                <span className="text-rc-text-dim">~</span>
+                <input
+                  type="date"
+                  value={customEnd}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  className="rc-input !w-[130px] !py-1 text-[11px]"
+                />
+                <button
+                  onClick={() => {
+                    if (customStart && customEnd && customStart <= customEnd) {
+                      setAppliedCustom({ start: customStart, end: customEnd });
+                    }
+                  }}
+                  disabled={!customStart || !customEnd || customStart > customEnd}
+                  className="px-2 py-1 rounded-[5px] bg-rc-blue text-white text-[11px] disabled:opacity-40"
+                >
+                  查询
+                </button>
+              </span>
+            )}
+          </div>
+        </div>
         <div className="flex items-center gap-3">
           {collectMsg && <span className="text-[11px] text-rc-text-dim">{collectMsg}</span>}
           <button
@@ -803,8 +887,13 @@ function RoutineSection({ userId, userRole }: { userId: string; userRole: string
 
       <div className="rc-card p-5 mb-4">
         <div className="text-[12px] text-rc-text-dim mb-3">
-          例行任务运行状态（近 14 天，celery beat 每日调度；✓ 成功 / ✗ 失败 / ⊘ 非交易日跳过 / · 未运行）
+          例行任务运行状态（{isCustom && appliedCustom ? `${appliedCustom.start} ~ ${appliedCustom.end}` : `近 ${preset} 天`}，celery beat 每日调度；✓ 成功 / ✗ 失败 / ⊘ 非交易日跳过 / · 未运行）
         </div>
+        {isCustom && !appliedCustom ? (
+          <div className="text-[12px] text-rc-text-dim py-4 text-center">
+            选择起止日期后点「查询」
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="text-[11px]">
             <thead>
@@ -848,11 +937,12 @@ function RoutineSection({ userId, userRole }: { userId: string; userRole: string
             </tbody>
           </table>
         </div>
+        )}
       </div>
 
       <div className="rc-card p-5">
         <div className="text-[12px] text-rc-text-dim mb-3">
-          每日数据写入量（近 30 天，按数据所属日期统计；行内各自归一化，0 = 当天无数据写入——周末/节假日为 0 属正常）
+          每日数据写入量（{isCustom && appliedCustom ? `${appliedCustom.start} ~ ${appliedCustom.end}` : `近 ${preset} 天`}，按数据所属日期统计；行内各自归一化，0 = 当天无数据写入——周末/节假日为 0 属正常）
         </div>
         {loading ? (
           <div className="text-[12px] text-rc-text-dim py-6 text-center">加载中…</div>
@@ -863,13 +953,13 @@ function RoutineSection({ userId, userRole }: { userId: string; userRole: string
         ) : (
           <div className="space-y-2">
             {METRIC_ROWS.map(({ metric, label }) => {
-              const values = metricDays.map((d) => metricMap.get(`${metric}|${d}`)?.rows_count ?? null);
+              const values = dayList.map((d) => metricMap.get(`${metric}|${d}`)?.rows_count ?? null);
               const max = Math.max(1, ...values.map((v) => v ?? 0));
               return (
                 <div key={metric} className="flex items-center gap-2">
                   <span className="w-14 shrink-0 text-[11px] text-rc-text-secondary">{label}</span>
                   <div className="flex gap-[2px] flex-1">
-                    {metricDays.map((d, i) => {
+                    {dayList.map((d, i) => {
                       const v = values[i];
                       const m = metricMap.get(`${metric}|${d}`);
                       const intensity = v === null ? 0 : Math.max(0.12, (v ?? 0) / max);

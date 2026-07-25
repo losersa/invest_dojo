@@ -434,30 +434,41 @@ async def get_task_history_logs(
 # ──────────────────────────────────────────
 
 
-@router.get("/admin/data/routine/runs", summary="例行任务运行记录（近 N 天）")
+@router.get("/admin/data/routine/runs", summary="例行任务运行记录（近 N 天或自定义区间）")
 async def routine_runs(
     days: int = 14,
+    start: str | None = None,
+    end: str | None = None,
     x_user_id: str | None = Header(None, alias="X-User-Id"),
     x_user_role: str | None = Header(None, alias="X-User-Role"),
 ):
-    """celery 例行任务（5m K线/快照/因子/汇总）每天的成功/失败/跳过记录。"""
+    """celery 例行任务（5m K线/快照/因子/汇总）每天的成功/失败/跳过记录。
+
+    - 默认近 `days` 天；同传 `start`/`end`（YYYY-MM-DD）则按自定义区间查询。
+    """
     _require_admin(x_user_id, x_user_role)
-    days = min(max(days, 1), 90)
-    since = (datetime.utcnow().date() - timedelta(days=days)).isoformat()
+    if start and end:
+        filters = {"run_date": f"gte.{start}", "and": f"(run_date.lte.{end})"}
+    else:
+        days = min(max(days, 1), 90)
+        since = (datetime.utcnow().date() - timedelta(days=days)).isoformat()
+        filters = {"run_date": f"gte.{since}"}
     client = get_supabase_client()
     rows = client.select_all(
         "routine_task_runs",
         columns="task_name,run_date,status,detail,duration_sec,started_at,finished_at",
-        filters={"run_date": f"gte.{since}"},
+        filters=filters,
         order="run_date.desc,task_name.asc",
         page_size=1000,
     )
     return {"data": rows, "days": days}
 
 
-@router.get("/admin/data/routine/metrics", summary="每日数据写入量（图表数据源，近 N 天）")
+@router.get("/admin/data/routine/metrics", summary="每日数据写入量（图表数据源，近 N 天或自定义区间）")
 async def routine_metrics(
     days: int = 30,
+    start: str | None = None,
+    end: str | None = None,
     x_user_id: str | None = Header(None, alias="X-User-Id"),
     x_user_role: str | None = Header(None, alias="X-User-Role"),
 ):
@@ -467,13 +478,17 @@ async def routine_metrics(
     读接口毫秒级，不扫大表。
     """
     _require_admin(x_user_id, x_user_role)
-    days = min(max(days, 1), 365)
-    since = (datetime.utcnow().date() - timedelta(days=days)).isoformat()
+    if start and end:
+        filters = {"date": f"gte.{start}", "and": f"(date.lte.{end})"}
+    else:
+        days = min(max(days, 1), 365)
+        since = (datetime.utcnow().date() - timedelta(days=days)).isoformat()
+        filters = {"date": f"gte.{since}"}
     client = get_supabase_client()
     rows = client.select_all(
         "daily_data_metrics",
         columns="date,metric,rows_count,symbols_covered,collected_at",
-        filters={"date": f"gte.{since}"},
+        filters=filters,
         order="date.asc,metric.asc",
         page_size=1000,
     )
