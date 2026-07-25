@@ -92,6 +92,11 @@
   - uvicorn --reload 卡死：根因是 watch 整个工作目录（含 logs/.task_history 高频写入）。
     `start-services-linux.sh` 已加 `--reload-dir <本服务> --reload-dir common` 收窄，
     6 服务已重启生效（logs 变更不再触发全量 reload；单服务变更只 reload 自己）。
+- **补充 6（SQL 工具增强）**：编辑器升级——① 选中执行：选中片段时按钮/Ctrl+Enter
+  只执行选中部分（按钮文案与字符数提示）；② 语法高亮：零依赖 overlay 方案
+  （透明 textarea + 着色层），关键字蓝/字符串绿/注释灰/数字橙/写操作关键字红色波浪线；
+  ③ 实时校验颜色指引：括号配对、引号闭合、写操作关键字、非 SELECT 开头 →
+  边框红/黄/绿 + 状态行提示，error 级执行前本地拦截。
 - **遗留**：
   1. 5m 回补（2026-05-01 起）在事故中中断，需断点续跑（增量模式自动从各股 MAX 续拉）；
   2. 基本面因子仅 ~202/2801 只股票有值（fundamentals JSONB 字段覆盖不足），待查；
