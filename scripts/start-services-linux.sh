@@ -115,7 +115,12 @@ for entry in "${svcList[@]}"; do
   envName="$(echo "$svc" | tr '[:lower:]' '[:upper:]' | tr '-' '_')_PORT"
   export "$envName"="$port"
   log_ok "启动 $svc :$port"
-  nohup "$PYEXE" -m uvicorn main:app --app-dir "$workdir" --host 0.0.0.0 --port "$port" --reload \
+  # --reload-dir 收窄 watch 范围：只 watch 本服务 + common。
+  # 不限制时 watch 整个工作目录（含 logs/、.task_history/ 等高频写入目录），
+  # 任何文件变动都触发全部服务 reload，且优雅退出遇慢请求会卡死
+  # （排障手册 docs/ops/dev-troubleshooting.md ## 12）。
+  nohup "$PYEXE" -m uvicorn main:app --app-dir "$workdir" --host 0.0.0.0 --port "$port" \
+    --reload --reload-dir "$workdir" --reload-dir "$PY/common" \
     > "$LOG_DIR/$svc.log" 2>&1 &
   PIDS+=("$!")
 done
