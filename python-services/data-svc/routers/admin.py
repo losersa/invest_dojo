@@ -13,7 +13,7 @@ import json as _json
 import re
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -427,6 +427,80 @@ async def get_task_history_logs(
         }
     except Exception as exc:
         raise _param_error(f"Failed to read history: {exc}") from exc
+
+
+# ──────────────────────────────────────────
+# 例行化任务可观测性（routine_task_runs / daily_data_metrics，迁移 007）
+# ──────────────────────────────────────────
+
+
+@router.get("/admin/data/routine/runs", summary="例行任务运行记录（近 N 天）")
+async def routine_runs(
+    days: int = 14,
+    x_user_id: str | None = Header(None, alias="X-User-Id"),
+    x_user_role: str | None = Header(None, alias="X-User-Role"),
+):
+    """celery 例行任务（5m K线/快照/因子/汇总）每天的成功/失败/跳过记录。"""
+    _require_admin(x_user_id, x_user_role)
+    days = min(max(days, 1), 90)
+    since = (datetime.utcnow().date() - timedelta(days=days)).isoformat()
+    client = get_supabase_client()
+    rows = client.select_all(
+        "routine_task_runs",
+        columns="task_name,run_date,status,detail,duration_sec,started_at,finished_at",
+        filters={"run_date": f"gte.{since}"},
+        order="run_date.desc,task_name.asc",
+        page_size=1000,
+    )
+    return {"data": rows, "days": days}
+
+
+@router.get("/admin/data/routine/metrics", summary="每日数据写入量（图表数据源，近 N 天）")
+async def routine_metrics(
+    days: int = 30,
+    x_user_id: str | None = Header(None, alias="X-User-Id"),
+    x_user_role: str | None = Header(None, alias="X-User-Role"),
+):
+    """各数据表每日写入量（klines_5m/klines_1d/market_snapshots/feature_values）。
+
+    数据来自中间表 daily_data_metrics（每日 20:00 celery 汇总写入），
+    读接口毫秒级，不扫大表。
+    """
+    _require_admin(x_user_id, x_user_role)
+    days = min(max(days, 1), 365)
+    since = (datetime.utcnow().date() - timedelta(days=days)).isoformat()
+    client = get_supabase_client()
+    rows = client.select_all(
+        "daily_data_metrics",
+        columns="date,metric,rows_count,symbols_covered,collected_at",
+        filters={"date": f"gte.{since}"},
+        order="date.asc,metric.asc",
+        page_size=1000,
+    )
+    return {"data": rows, "days": days}
+
+
+@router.post("/admin/data/routine/collect", summary="手动触发每日写入量汇总（回填/补漏）")
+async def routine_collect(
+    days: int = 1,
+    date: str | None = None,
+    x_user_id: str | None = Header(None, alias="X-User-Id"),
+    x_user_role: str | None = Header(None, alias="X-User-Role"),
+):
+    """异步触发 feature.collect_daily_metrics（celery）。
+
+    - 默认汇总今天；`date=2026-07-01&days=24` 回填该日往前 24 天。
+    """
+    _require_admin(x_user_id, x_user_role)
+    days = min(max(days, 1), 90)
+    from common.celery_app import celery_app  # noqa: PLC0415
+
+    r = celery_app.send_task(
+        "feature.collect_daily_metrics",
+        kwargs={"date_str": date, "days": days},
+        queue="feature",
+    )
+    return {"data": {"celery_task_id": r.id, "date": date, "days": days}}
 
 
 def _run_script_task(task_name: str, task_info: dict) -> None:

@@ -6,6 +6,22 @@
 
 ---
 
+## 2026-07-25（补 2）· 例行任务可观测性（数据管理页图表）
+
+- **改动**：数据管理页新增「例行任务巡检」区块——近 14 天任务状态格点表（4 个 celery
+  例行任务的成功/失败/跳过）+ 近 30 天每日写入量条形图（5m/1d/快照/因子值）；
+  全部读中间表，页面访问不扫大表。
+- **涉及文件**：`migrations/007_routine_observability.sql`（routine_task_runs +
+  daily_data_metrics + idx_klines_all_tf_dt）、`train-svc/feature_tasks.py`
+  （`_record_run` 埋点 + `collect_daily_metrics_task` 每日 20:00 汇总）、
+  `train-svc/celery_worker.py`（beat ④）、`data-svc/routers/admin.py`（routine 三端点）、
+  `apps/web/src/app/admin/data/page.tsx`（RoutineSection）。
+- **验证**：30 天回填完成（120 行，67.8s）；图表即刻暴露因子 7-20/21 仅 281 行、
+  7-23/24 为 0（待回补）；`/admin/data` 200、代理链路端到端通。
+- **遗留**：因子值 7-23/24 缺口需补算（`feature.compute_range` 或等下周一只会覆盖新日期）。
+
+---
+
 ## 2026-07-25（补）· git 版本管理恢复
 
 - **改动**：工作区重建 git 管理——`git init` + 关联远程 `github.com/losersa/invest_dojo`

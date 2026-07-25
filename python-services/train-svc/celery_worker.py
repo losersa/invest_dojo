@@ -63,6 +63,12 @@ if os.environ.get("ENABLE_DAILY_BEAT", "1") == "1":
             "kwargs": {"days": 2},
             "options": {"queue": "feature"},
         },
+        # ④ 汇总当天各表写入量 → daily_data_metrics（数据管理页图表数据源）
+        "daily-metrics-collect": {
+            "task": "feature.collect_daily_metrics",
+            "schedule": crontab(hour=20, minute=0),  # 每天 20:00
+            "options": {"queue": "feature"},
+        },
     }
 else:
     celery_app.conf.beat_schedule = {}

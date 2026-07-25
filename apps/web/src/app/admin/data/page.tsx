@@ -254,6 +254,9 @@ export default function AdminDataPage() {
           </div>
         )}
 
+        {/* 例行任务巡检（celery 例行任务运行状态 + 每日写入量图表） */}
+        {userId && userRole && <RoutineSection userId={userId} userRole={userRole} />}
+
         {/* 数据概览 */}
         <section className="mb-8">
           <h2 className="text-[14px] font-medium text-white mb-4">数据概览</h2>
@@ -650,5 +653,236 @@ function TaskCard({ task, status, onTrigger, userId, userRole }: {
         </div>
       )}
     </div>
+  );
+}
+
+// ──────────────────────────────────────────
+// 例行任务巡检：celery 例行任务状态格点表 + 每日写入量条形图
+// 数据源：routine_task_runs / daily_data_metrics（中间表，毫秒级，不扫大表）
+// ──────────────────────────────────────────
+
+interface RoutineRun {
+  task_name: string;
+  run_date: string;
+  status: "success" | "failed" | "skipped";
+  detail?: Record<string, unknown>;
+  duration_sec?: number;
+  finished_at?: string;
+}
+
+interface DailyMetric {
+  date: string;
+  metric: string;
+  rows_count: number;
+  symbols_covered?: number | null;
+}
+
+const ROUTINE_TASKS: Array<{ name: string; label: string }> = [
+  { name: "feature.update_klines_5m", label: "5m K线" },
+  { name: "feature.update_market_snapshots", label: "市场快照" },
+  { name: "feature.compute_incremental", label: "因子增量" },
+  { name: "feature.collect_daily_metrics", label: "每日汇总" },
+];
+
+const METRIC_ROWS: Array<{ metric: string; label: string }> = [
+  { metric: "klines_5m", label: "5m K线" },
+  { metric: "klines_1d", label: "日 K" },
+  { metric: "market_snapshots", label: "快照" },
+  { metric: "feature_values", label: "因子值" },
+];
+
+const RUN_STATUS_STYLE: Record<string, { bg: string; text: string }> = {
+  success: { bg: "bg-emerald-500/70", text: "✓" },
+  failed: { bg: "bg-red-500/80", text: "✗" },
+  skipped: { bg: "bg-zinc-500/50", text: "⊘" },
+};
+
+function fmtRows(n: number): string {
+  if (n >= 10000) return `${(n / 10000).toFixed(n >= 1000000 ? 0 : 1)}万`;
+  return String(n);
+}
+
+function RoutineSection({ userId, userRole }: { userId: string; userRole: string }) {
+  const [runs, setRuns] = useState<RoutineRun[]>([]);
+  const [metrics, setMetrics] = useState<DailyMetric[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [collecting, setCollecting] = useState(false);
+  const [collectMsg, setCollectMsg] = useState<string | null>(null);
+
+  const headers = { "X-User-Id": userId, "X-User-Role": userRole };
+
+  const load = useCallback(async () => {
+    try {
+      const [runsResp, metricsResp] = await Promise.all([
+        fetch(`${DATA_SVC_URL}/api/v1/data/admin/data/routine/runs?days=14`, { headers }),
+        fetch(`${DATA_SVC_URL}/api/v1/data/admin/data/routine/metrics?days=30`, { headers }),
+      ]);
+      if (runsResp.ok) setRuns((await runsResp.json()).data ?? []);
+      if (metricsResp.ok) setMetrics((await metricsResp.json()).data ?? []);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, userRole]);
+
+  useEffect(() => {
+    load();
+    const timer = setInterval(load, 60_000);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  // ── 状态格点表：近 14 天 × 4 任务 ──
+  const RUN_DAYS = 14;
+  const today = new Date();
+  const dayList: string[] = Array.from({ length: RUN_DAYS }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (RUN_DAYS - 1 - i));
+    return d.toISOString().slice(0, 10);
+  });
+  const runMap = new Map<string, RoutineRun>();
+  for (const r of runs) runMap.set(`${r.task_name}|${r.run_date}`, r);
+
+  // ── 每日写入量：近 30 天 × 4 指标（行内各自归一化）──
+  const METRIC_DAYS = 30;
+  const metricDays: string[] = Array.from({ length: METRIC_DAYS }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (METRIC_DAYS - 1 - i));
+    return d.toISOString().slice(0, 10);
+  });
+  const metricMap = new Map<string, DailyMetric>();
+  for (const m of metrics) metricMap.set(`${m.metric}|${m.date}`, m);
+
+  const triggerCollect = async () => {
+    setCollecting(true);
+    setCollectMsg(null);
+    try {
+      const resp = await fetch(`${DATA_SVC_URL}/api/v1/data/admin/data/routine/collect?days=3`, {
+        method: "POST",
+        headers,
+      });
+      if (resp.ok) {
+        setCollectMsg("已触发汇总（近 3 天），约 1 分钟后自动刷新");
+        setTimeout(load, 60_000);
+      } else {
+        setCollectMsg(`触发失败 HTTP ${resp.status}`);
+      }
+    } catch {
+      setCollectMsg("触发失败（网络错误）");
+    } finally {
+      setCollecting(false);
+    }
+  };
+
+  return (
+    <section className="mb-8">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-[14px] font-medium text-white">例行任务巡检</h2>
+        <div className="flex items-center gap-3">
+          {collectMsg && <span className="text-[11px] text-rc-text-dim">{collectMsg}</span>}
+          <button
+            onClick={triggerCollect}
+            disabled={collecting}
+            className="px-3 py-1.5 rounded-[6px] bg-rc-surface-card border border-rc-border-subtle text-[12px] text-rc-text-secondary hover:text-white transition disabled:opacity-50"
+          >
+            {collecting ? "触发中…" : "手动汇总"}
+          </button>
+        </div>
+      </div>
+
+      <div className="rc-card p-5 mb-4">
+        <div className="text-[12px] text-rc-text-dim mb-3">
+          例行任务运行状态（近 14 天，celery beat 每日调度；✓ 成功 / ✗ 失败 / ⊘ 非交易日跳过 / · 未运行）
+        </div>
+        <div className="overflow-x-auto">
+          <table className="text-[11px]">
+            <thead>
+              <tr>
+                <th className="text-left text-rc-text-dim font-normal pr-4 pb-2">任务</th>
+                {dayList.map((d) => (
+                  <th key={d} className="text-rc-text-dim font-normal px-0.5 pb-2 text-center">
+                    {d.slice(5)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {ROUTINE_TASKS.map((t) => (
+                <tr key={t.name}>
+                  <td className="text-rc-text-secondary pr-4 py-0.5 whitespace-nowrap">{t.label}</td>
+                  {dayList.map((d) => {
+                    const run = runMap.get(`${t.name}|${d}`);
+                    const st = run ? RUN_STATUS_STYLE[run.status] : null;
+                    return (
+                      <td key={d} className="px-0.5 py-0.5 text-center">
+                        <span
+                          title={
+                            run
+                              ? `${d} ${run.status}${run.duration_sec != null ? ` · ${run.duration_sec}s` : ""}${
+                                  run.detail?.error ? `\n${String(run.detail.error).slice(0, 200)}` : ""
+                                }`
+                              : `${d} 未运行`
+                          }
+                          className={`inline-flex items-center justify-center w-5 h-5 rounded-[4px] text-[10px] ${
+                            st ? `${st.bg} text-white` : "text-rc-text-dim"
+                          }`}
+                        >
+                          {st ? st.text : "·"}
+                        </span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="rc-card p-5">
+        <div className="text-[12px] text-rc-text-dim mb-3">
+          每日数据写入量（近 30 天，按数据所属日期统计；行内各自归一化，0 = 当天无数据写入——周末/节假日为 0 属正常）
+        </div>
+        {loading ? (
+          <div className="text-[12px] text-rc-text-dim py-6 text-center">加载中…</div>
+        ) : (
+          <div className="space-y-2">
+            {METRIC_ROWS.map(({ metric, label }) => {
+              const values = metricDays.map((d) => metricMap.get(`${metric}|${d}`)?.rows_count ?? null);
+              const max = Math.max(1, ...values.map((v) => v ?? 0));
+              return (
+                <div key={metric} className="flex items-center gap-2">
+                  <span className="w-14 shrink-0 text-[11px] text-rc-text-secondary">{label}</span>
+                  <div className="flex gap-[2px] flex-1">
+                    {metricDays.map((d, i) => {
+                      const v = values[i];
+                      const m = metricMap.get(`${metric}|${d}`);
+                      const intensity = v === null ? 0 : Math.max(0.12, (v ?? 0) / max);
+                      return (
+                        <div
+                          key={d}
+                          title={`${d}\n${v === null ? "未采集" : `${v.toLocaleString()} 行${m?.symbols_covered ? ` · ${m.symbols_covered} 只` : ""}`}`}
+                          style={{ opacity: v === null ? 0.15 : intensity }}
+                          className={`h-5 flex-1 rounded-[2px] ${
+                            v === 0 ? "bg-zinc-700" : "bg-rc-blue"
+                          }`}
+                        />
+                      );
+                    })}
+                  </div>
+                  <span className="w-16 shrink-0 text-right text-[10px] font-rc-mono text-rc-text-dim">
+                    {(() => {
+                      const last = [...values].reverse().find((v) => v !== null);
+                      return last === undefined || last === null ? "—" : `${fmtRows(last)}行`;
+                    })()}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
