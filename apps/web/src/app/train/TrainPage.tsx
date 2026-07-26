@@ -89,6 +89,52 @@ export function TrainPage() {
   const [peerModes, setPeerModes] = useState<Set<PeerMode>>(
     new Set<PeerMode>(["rank", "relative", "sector_mean"]),
   );
+  const [poolHint, setPoolHint] = useState<string | null>(null);
+
+  // 分钟/小时级目标 → 标签用 5m K线计算（与日频特征对齐；5m 数据自 2026-02-02 起）
+  const isIntradayTarget = /return_\d+[hm]$/i.test(target.trim());
+
+  // 目标股票变化 → 自动检测行业并填入同行业股票池（可手动修改）
+  useEffect(() => {
+    const code = targetSymbol.trim();
+    if (!/^\d{6}$/.test(code)) {
+      setPoolHint(null);
+      return;
+    }
+    let alive = true;
+    const timer = setTimeout(async () => {
+      try {
+        // ① 查目标股行业
+        const s1 = await fetch(`/svc/data/api/v1/data/symbols?search=${code}&page_size=20`);
+        const j1 = await s1.json();
+        const hit = (j1.data ?? []).find((r: { code: string }) => r.code === code);
+        if (!alive) return;
+        if (!hit?.industry) {
+          setPoolHint(hit ? `目标股 ${code} 无行业信息，请手动填写股票池` : `未找到股票 ${code}`);
+          return;
+        }
+        // ② 查同行业在市股票
+        const s2 = await fetch(
+          `/svc/data/api/v1/data/symbols?industry=${encodeURIComponent(hit.industry)}&page_size=500`,
+        );
+        const j2 = await s2.json();
+        const codes: string[] = (j2.data ?? [])
+          .map((r: { code: string }) => r.code)
+          .filter(Boolean);
+        if (!alive || codes.length === 0) return;
+        setSymbolsText(codes.join(","));
+        setPoolHint(
+          `已按目标股行业「${hit.industry}」自动填入 ${codes.length} 只同行业股票（可手动修改）`,
+        );
+      } catch {
+        if (alive) setPoolHint("行业查询失败，请手动填写股票池");
+      }
+    }, 500);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [targetSymbol]);
   const [splitMethod, setSplitMethod] = useState<"time" | "random">("time"); // 默认按时间切分
 
   // ── 训练/操作说明面板 ──
@@ -366,6 +412,12 @@ export function TrainPage() {
                     className="rc-input font-rc-mono text-[12px]"
                     placeholder="return_5d"
                   />
+                  {isIntradayTarget && (
+                    <p className="text-[11px] text-amber-400/90 mt-1">
+                      分钟/小时级目标：标签将用 5m K线计算（样本点=每日收盘，与日频特征对齐）；
+                      5m 数据自 2026-02-02 起，训练集早于该日期的样本会被丢弃。
+                    </p>
+                  )}
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {["return_5d", "return_10d", "return_20d", "return_60d"].map((p) => (
                       <button
@@ -416,6 +468,9 @@ export function TrainPage() {
                   className="rc-input resize-none font-rc-mono text-[12px]"
                   placeholder="603216,603408,..."
                 />
+                {poolHint && (
+                  <p className="text-[11px] text-rc-blue mt-1">{poolHint}</p>
+                )}
               </Field>
 
               <Field label="模型名称（可选）">

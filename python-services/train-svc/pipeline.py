@@ -60,6 +60,31 @@ def parse_horizon(target: str) -> int:
     return 1
 
 
+# 1 个交易日 = 4 小时 = 48 根 5m bar
+_BARS_PER_HOUR = 12
+
+
+def parse_horizon_tf(target: str) -> tuple[int, str]:
+    """解析前向周期 → (horizon, timeframe)。
+
+    - `return_Nd` → (N, '1d')：日频标签（历史全量可用）
+    - `return_Nh` → (N*12, '5m')：5m bar 标签（真实小时级，数据自 2026-02-02 起）
+    - `return_Nm` → (ceil(N/5), '5m')：5m bar 标签（真实分钟级）
+    标签归属日 = 样本 bar 的北京交易日，与日频特征对齐。
+    """
+    m = _HORIZON_RE.search(target or "")
+    if not m:
+        return 5, "1d"
+    n = int(m.group(1))
+    unit = m.group(2).lower()
+    if unit == "d":
+        return n, "1d"
+    if unit == "h":
+        return max(1, n * _BARS_PER_HOUR), "5m"
+    # m：N 分钟 / 5 分钟每 bar，向上取整至少 1 根
+    return max(1, (n + 4) // 5), "5m"
+
+
 def _date_range_clause(start: str | None, end: str | None, col: str) -> dict[str, str]:
     """用 `and` 语法表达 [start, end] 闭区间，避免 dict key 冲突。"""
     parts: list[str] = []
@@ -264,23 +289,34 @@ def fetch_forward_returns(
     horizon: int,
     symbols: list[str] | None = None,
     label_spec: dict[str, Any] | None = None,
+    timeframe: str = "1d",
 ) -> pd.DataFrame:
     """计算前向标签（连续 metric）。默认=收盘涨跌，支持 max/min/自定义。
 
-    从 klines_all（timeframe=1d）取 OHLCV，按 symbol 分组计算前向窗口聚合，
+    从 klines_all 取 OHLCV，按 symbol 分组计算前向窗口聚合，
     再按 `label_spec.kind` 生成连续标签 metric（正负二值化在 train_lightgbm 用 threshold 完成）。
 
-    需要取到 end + horizon 天之后的 K 线才能给 end 附近的样本打标，
-    因此内部把查询窗口向后延展 horizon 个日历日（+7 天缓冲）。
+    timeframe：
+    - '1d'：日频标签（return_Nd），查询窗口向后延展 horizon 个日历日（+7 天缓冲）
+    - '5m'：5m bar 标签（return_Nh/Nm），horizon 单位为 5m bar 数；
+      样本点取「每日最后一根 bar」（收盘时点），标签归属日=该 bar 的北京交易日，
+      与日频特征对齐；5m 数据自 2026-02-02 起，更早的样本天然无标签（被丢弃）。
     """
     from datetime import datetime, timedelta
 
     spec = {**DEFAULT_LABEL_SPEC, **(label_spec or {})}
     kind = spec.get("kind", "return")
 
-    end_dt = (datetime.strptime(end, "%Y-%m-%d") + timedelta(days=horizon + 7)).strftime("%Y-%m-%d")
+    if timeframe == "5m":
+        # 延展：horizon 根 bar ≈ horizon/48 个交易日，+3 天缓冲
+        end_dt = (
+            datetime.strptime(end, "%Y-%m-%d")
+            + timedelta(days=horizon // 48 + 4)
+        ).strftime("%Y-%m-%d")
+    else:
+        end_dt = (datetime.strptime(end, "%Y-%m-%d") + timedelta(days=horizon + 7)).strftime("%Y-%m-%d")
     client = get_supabase_client()
-    filt: dict[str, str] = {"timeframe": "eq.1d"}
+    filt: dict[str, str] = {"timeframe": f"eq.{timeframe}"}
     if symbols:
         filt["symbol"] = "in.(" + ",".join(symbols) + ")"
     filt.update(_date_range_clause(start, end_dt, "dt"))
@@ -293,11 +329,14 @@ def fetch_forward_returns(
     df = pd.DataFrame(rows)
     if df.empty:
         return pd.DataFrame(columns=["symbol", "dt", "label"])
-    df["dt"] = pd.to_datetime(df["dt"]).dt.date
     for col in ("open", "high", "low", "close", "volume"):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
+    if timeframe == "5m":
+        return _forward_returns_5m(df, horizon, kind, spec)
+
+    df["dt"] = pd.to_datetime(df["dt"]).dt.date
     frames = []
     for sym, g in df.groupby("symbol"):
         ns = _forward_window_aggregates(g, horizon)
@@ -317,6 +356,61 @@ def fetch_forward_returns(
         metric = metric.where(ns["close_fwd"].notna())
         frames.append(
             pd.DataFrame({"symbol": sym, "dt": ns["dt"].values, "label": metric.values})
+        )
+    return pd.concat(frames, ignore_index=True)
+
+
+def _forward_returns_5m(
+    df: pd.DataFrame, horizon: int, kind: str, spec: dict[str, Any]
+) -> pd.DataFrame:
+    """5m bar 标签：样本点=每日最后一根 bar（收盘时点），前向 horizon 根 bar。"""
+    df["dt_ts"] = pd.to_datetime(df["dt"])
+    df["trade_date"] = df["dt_ts"].dt.tz_convert("Asia/Shanghai").dt.date
+
+    frames = []
+    for sym, g in df.groupby("symbol"):
+        g = g.sort_values("dt_ts").reset_index(drop=True)
+        close_t = g["close"]
+        close_fwd = close_t.shift(-horizon)
+        if kind == "return":
+            metric = close_fwd / close_t - 1
+        elif kind in ("max_return", "min_return"):
+            col = "high" if kind == "max_return" else "low"
+            exts = pd.concat([g[col].shift(-k) for k in range(1, horizon + 1)], axis=1)
+            metric = (
+                exts.max(axis=1) / close_t - 1
+                if kind == "max_return"
+                else exts.min(axis=1) / close_t - 1
+            )
+        elif kind == "custom":
+            ns = {
+                "ret": close_fwd / close_t - 1,
+                "close": close_t,
+                "close_fwd": close_fwd,
+                "max_ret": pd.concat(
+                    [g["high"].shift(-k) for k in range(1, horizon + 1)], axis=1
+                ).max(axis=1)
+                / close_t
+                - 1,
+                "min_ret": pd.concat(
+                    [g["low"].shift(-k) for k in range(1, horizon + 1)], axis=1
+                ).min(axis=1)
+                / close_t
+                - 1,
+            }
+            metric = _safe_eval_label(spec.get("expr", ""), ns)
+            metric = pd.Series(np.asarray(metric, dtype="float64"), index=close_t.index)
+        else:
+            raise ValueError(f"不支持的标签 kind={kind!r}（return/max_return/min_return/custom）")
+        metric = metric.where(close_fwd.notna())
+
+        # 样本点：每日最后一根 bar（收盘时点）
+        g["label"] = metric.values
+        last_bars = g.groupby("trade_date").tail(1)
+        frames.append(
+            pd.DataFrame(
+                {"symbol": sym, "dt": last_bars["trade_date"].values, "label": last_bars["label"].values}
+            )
         )
     return pd.concat(frames, ignore_index=True)
 
@@ -509,17 +603,24 @@ def build_dataset(
         symbols_used = symbols
         logger.info("build_dataset.symbols_auto", count=len(symbols_used))
 
-    horizon = parse_horizon(target)
     if not _HORIZON_RE.search(target or ""):
         raise ValueError(
             f"不支持的 target={target!r}；仅支持 return_Nx 格式（x=d天/h时/m分，如 return_20d）"
         )
+    horizon, label_tf = parse_horizon_tf(target)
     start = train_start or "2018-01-01"
     end = train_end or "2023-12-31"
-    logger.info("build_dataset.label", spec=label_spec_description(label_spec))
+    logger.info(
+        "build_dataset.label",
+        spec=label_spec_description(label_spec),
+        label_timeframe=label_tf,
+        horizon=horizon,
+    )
 
     feat = fetch_features(factor_ids, start, end, symbols_used)
-    labels = fetch_forward_returns(start, end, horizon, symbols_used, label_spec=label_spec)
+    labels = fetch_forward_returns(
+        start, end, horizon, symbols_used, label_spec=label_spec, timeframe=label_tf
+    )
 
     if feat.empty:
         raise ValueError(
