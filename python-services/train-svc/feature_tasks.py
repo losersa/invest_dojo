@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from factors.batch_compute import compute_and_save, compute_incremental
+from factors.compute_xsec import compute_xsec_factors
 
 from common import celery_app, get_logger
 
@@ -31,6 +32,15 @@ logger = get_logger(__name__)
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 _BJ_TZ = timezone(timedelta(hours=8))  # run_date 按北京日期归属
+
+
+def _run_xsec(start: str, end: str) -> dict[str, Any] | None:
+    """横截面因子预计算（行业 rank/z/mean）——失败不阻断主任务。"""
+    try:
+        return compute_xsec_factors(start, end)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("xsec.compute_failed", start=start, end=end, error=str(e)[:300])
+        return None
 
 
 def _pg_conn():
@@ -123,10 +133,13 @@ def compute_incremental_task(
         raise
     # 错误列表只保留前 10 条，避免结果体过大
     result["errors"] = result["errors"][:10]
+    # 横截面因子（行业 rank/z/mean）随增量一并计算（失败不阻断主任务）
+    xsec = _run_xsec(result["start"], result["end"])
     logger.info(
         "feature.compute_incremental.done",
         celery_task_id=self.request.id,
         records_written=result["records_written"],
+        xsec_records=xsec.get("records_written") if xsec else None,
         duration_sec=result["duration_sec"],
     )
     _record_run(
@@ -135,6 +148,7 @@ def compute_incremental_task(
         {
             "days": days,
             "records_written": result["records_written"],
+            "xsec_records": xsec.get("records_written") if xsec else None,
             "start": result.get("start"),
             "end": result.get("end"),
         },
@@ -167,10 +181,13 @@ def compute_range_task(
         batch_size=batch_size,
     )
     result["errors"] = result["errors"][:10]
+    # 横截面因子随区间计算一并刷新（失败不阻断主任务）
+    xsec = _run_xsec(start, end)
     logger.info(
         "feature.compute_range.done",
         celery_task_id=self.request.id,
         records_written=result["records_written"],
+        xsec_records=xsec.get("records_written") if xsec else None,
         duration_sec=result["duration_sec"],
     )
     return result

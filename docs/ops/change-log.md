@@ -125,6 +125,12 @@
   解析，d 级=N 天，h/m 级=1 天缓冲）时黄色警告"前向标签窗口不完整，验证/测试集
   可能为空，建议 train_end ≤ 数据最新日期 − 周期"。确认板块横截面特征为训练时
   实时生成（add_peer_features，非预计算）；行业数据在 symbols 表。
+- **补充 12（横截面因子预计算，2026-07-26）**：板块横截面特征从训练时实时计算升级为
+  预计算入库——新增 `compute_xsec.py`（全市场按 (date, industry) groupby 做
+  rank(pct)/z-score/mean），8 个 xsec_ 因子注册入库（category=xsec,
+  formula_type=precomputed）；接入调度：compute_incremental/compute_range 完成后
+  自动算（失败不阻断）；全历史回补完成（2026-02-02~07-24，421.9 万行，84 行业）。
+  注意：feature_values 无 timeframe 列，写记录不要带。
 - **遗留**：
   1. 5m 回补（2026-05-01 起）在事故中中断，需断点续跑（增量模式自动从各股 MAX 续拉）；
   2. 基本面因子仅 ~202/2801 只股票有值（fundamentals JSONB 字段覆盖不足），待查；
