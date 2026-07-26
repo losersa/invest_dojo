@@ -307,22 +307,8 @@ export default function AdminDataPage() {
           </div>
         </section>
 
-        {/* 数据更新任务 */}
-        <section>
-          <h2 className="text-[14px] font-medium text-white mb-4">数据更新任务</h2>
-          <div className="space-y-3">
-            {TASKS.map((task) => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                status={tasks[task.id]}
-                onTrigger={() => triggerTask(task.id)}
-                userId={userId}
-                userRole={userRole}
-              />
-            ))}
-          </div>
-        </section>
+        {/* 例行化任务（celery beat 调度；含依赖检查/日志/源码/手动触发） */}
+        {userId && userRole && <RoutineTasksSection userId={userId} userRole={userRole} />}
       </main>
     </div>
   );
@@ -999,6 +985,266 @@ function RoutineSection({ userId, userRole }: { userId: string; userRole: string
               );
             })}
           </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// ──────────────────────────────────────────
+// 例行化任务：celery beat 调度的任务卡片（依赖检查 / 日志 / 源码 / 手动触发）
+// ──────────────────────────────────────────
+
+interface RoutineLastRun {
+  status: "success" | "failed" | "skipped";
+  run_date: string;
+  duration_sec?: number;
+  finished_at?: string;
+  detail?: {
+    precheck?: Array<{ name: string; ok: boolean; detail?: string; hint?: string | null }>;
+    summary?: string[];
+    errors?: Array<Record<string, unknown>>;
+    log_tail?: string;
+    error?: string;
+    records_written?: number;
+    xsec_records?: number;
+    reason?: string;
+  };
+}
+
+interface RoutineTaskItem {
+  name: string;
+  label: string;
+  cron: string;
+  queue: string;
+  desc: string;
+  precheck_desc: string;
+  source: string;
+  last_run?: RoutineLastRun | null;
+}
+
+const LAST_STATUS_STYLE: Record<string, { cls: string; text: string }> = {
+  success: { cls: "bg-emerald-500/15 text-emerald-400", text: "✓ 成功" },
+  failed: { cls: "bg-red-500/15 text-red-400", text: "✗ 失败" },
+  skipped: { cls: "bg-zinc-500/15 text-zinc-400", text: "⊘ 跳过" },
+};
+
+function RoutineTasksSection({ userId, userRole }: { userId: string; userRole: string }) {
+  const [items, setItems] = useState<RoutineTaskItem[]>([]);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [tab, setTab] = useState<"log" | "source">("log");
+  const [sourceCache, setSourceCache] = useState<Record<string, { content: string; truncated: boolean }>>({});
+  const [triggering, setTriggering] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const headers = { "X-User-Id": userId, "X-User-Role": userRole };
+
+  const load = useCallback(async () => {
+    try {
+      const resp = await fetch(`${ROUTINE_API}/tasks`, { headers });
+      if (resp.ok) setItems((await resp.json()).data ?? []);
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, userRole]);
+
+  useEffect(() => {
+    load();
+    const timer = setInterval(load, 30_000);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  const trigger = async (t: RoutineTaskItem) => {
+    setTriggering(t.name);
+    setMsg(null);
+    try {
+      const resp = await fetch(`${ROUTINE_API}/tasks/${encodeURIComponent(t.name)}/trigger`, {
+        method: "POST",
+        headers,
+      });
+      setMsg(resp.ok ? `已触发「${t.label}」，稍后自动刷新状态` : `触发失败 HTTP ${resp.status}`);
+      setTimeout(load, 8000);
+    } catch {
+      setMsg("触发失败（网络错误）");
+    } finally {
+      setTriggering(null);
+    }
+  };
+
+  const openSource = async (t: RoutineTaskItem) => {
+    setTab("source");
+    if (sourceCache[t.source]) return;
+    try {
+      const resp = await fetch(
+        `${ROUTINE_API}/tasks/source?path=${encodeURIComponent(t.source)}`,
+        { headers },
+      );
+      if (resp.ok) {
+        const j = await resp.json();
+        setSourceCache((prev) => ({
+          ...prev,
+          [t.source]: { content: j.data.content, truncated: j.data.truncated },
+        }));
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  return (
+    <section className="mb-8">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-[14px] font-medium text-white">例行化任务</h2>
+        {msg && <span className="text-[11px] text-rc-text-dim">{msg}</span>}
+      </div>
+      <div className="space-y-3">
+        {items.map((t) => {
+          const last = t.last_run;
+          const st = last ? LAST_STATUS_STYLE[last.status] : null;
+          const isOpen = expanded === t.name;
+          return (
+            <div key={t.name} className="rc-card p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[14px] text-white font-medium">{t.label}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-rc-mono bg-rc-surface-card border border-rc-border-subtle text-rc-text-dim">
+                      {t.cron}
+                    </span>
+                    {st && last ? (
+                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-rc-mono ${st.cls}`}>
+                        {st.text}
+                        {last.duration_sec != null && ` ${last.duration_sec}s`}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full font-rc-mono bg-zinc-500/10 text-zinc-500">
+                        未运行
+                      </span>
+                    )}
+                    {last?.finished_at && (
+                      <span className="text-[10px] font-rc-mono text-rc-text-dim">
+                        {last.finished_at.slice(5, 16).replace("T", " ")}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[12px] text-rc-text-muted mt-1.5 leading-relaxed">{t.desc}</p>
+                  <p className="text-[11px] text-rc-text-dim mt-1">
+                    <span className="text-rc-text-dim">依赖检查：</span>
+                    {t.precheck_desc} · <span className="font-rc-mono">{t.name}</span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => trigger(t)}
+                    disabled={triggering === t.name}
+                    className="px-3 py-1.5 rounded-[6px] text-[12px] font-medium bg-rc-blue/10 border border-rc-blue/30 text-rc-blue hover:bg-rc-blue/20 transition disabled:opacity-50"
+                  >
+                    {triggering === t.name ? "触发中…" : "▶ 执行"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (isOpen && tab === "log") setExpanded(null);
+                      else {
+                        setExpanded(t.name);
+                        setTab("log");
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-[6px] text-[12px] bg-rc-surface-card border border-rc-border-subtle text-rc-text-secondary hover:text-white transition"
+                  >
+                    日志
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (isOpen && tab === "source") setExpanded(null);
+                      else {
+                        setExpanded(t.name);
+                        openSource(t);
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-[6px] text-[12px] bg-rc-surface-card border border-rc-border-subtle text-rc-text-secondary hover:text-white transition"
+                  >
+                    源码
+                  </button>
+                </div>
+              </div>
+
+              {isOpen && (
+                <div className="mt-4 border-t border-rc-border-subtle pt-4">
+                  {tab === "log" ? (
+                    last?.detail ? (
+                      <div className="space-y-3">
+                        {/* 依赖检查结果 */}
+                        {last.detail.precheck && (
+                          <div>
+                            <div className="text-[11px] text-rc-text-dim mb-1.5">依赖检查</div>
+                            <div className="space-y-1">
+                              {last.detail.precheck.map((c, i) => (
+                                <div key={i} className="flex items-start gap-2 text-[11px]">
+                                  <span className={c.ok ? "text-emerald-400" : "text-red-400"}>
+                                    {c.ok ? "✓" : "✗"}
+                                  </span>
+                                  <span className="text-rc-text-secondary font-rc-mono">{c.name}</span>
+                                  <span className="text-rc-text-dim">{c.detail}</span>
+                                  {c.hint && <span className="text-amber-400/90">{c.hint}</span>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {/* 摘要/错误 */}
+                        {(last.detail.records_written != null || last.detail.xsec_records != null) && (
+                          <div className="text-[11px] text-rc-text-secondary font-rc-mono">
+                            records_written={last.detail.records_written ?? "—"}
+                            {last.detail.xsec_records != null && ` · xsec=${last.detail.xsec_records}`}
+                          </div>
+                        )}
+                        {last.detail.summary && last.detail.summary.length > 0 && (
+                          <pre className="text-[11px] font-rc-mono text-rc-text-muted whitespace-pre-wrap">
+                            {last.detail.summary.join("\n")}
+                          </pre>
+                        )}
+                        {last.detail.error && (
+                          <pre className="text-[11px] font-rc-mono text-red-300 whitespace-pre-wrap">
+                            {last.detail.error}
+                          </pre>
+                        )}
+                        {last.detail.errors && last.detail.errors.length > 0 && (
+                          <pre className="text-[11px] font-rc-mono text-red-300/80 whitespace-pre-wrap max-h-40 overflow-auto">
+                            {JSON.stringify(last.detail.errors, null, 1).slice(0, 3000)}
+                          </pre>
+                        )}
+                        {last.detail.log_tail && (
+                          <div>
+                            <div className="text-[11px] text-rc-text-dim mb-1.5">运行日志</div>
+                            <pre className="text-[10px] font-rc-mono text-zinc-400 whitespace-pre-wrap max-h-64 overflow-auto bg-black/40 rounded p-3">
+                              {last.detail.log_tail}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-[12px] text-rc-text-dim py-3">暂无运行记录</div>
+                    )
+                  ) : sourceCache[t.source] ? (
+                    <div>
+                      <div className="text-[11px] text-rc-text-dim mb-1.5 font-rc-mono">
+                        {t.source}
+                        {sourceCache[t.source].truncated && "（截断显示前 30KB）"}
+                      </div>
+                      <pre className="text-[10px] font-rc-mono text-zinc-300 whitespace-pre max-h-96 overflow-auto bg-black/40 rounded p-3">
+                        {sourceCache[t.source].content}
+                      </pre>
+                    </div>
+                  ) : (
+                    <div className="text-[12px] text-rc-text-dim py-3">加载源码中…</div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {items.length === 0 && (
+          <div className="text-[12px] text-rc-text-dim py-6 text-center rc-card">加载中…</div>
         )}
       </div>
     </section>

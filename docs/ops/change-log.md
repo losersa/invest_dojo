@@ -131,6 +131,18 @@
   formula_type=precomputed）；接入调度：compute_incremental/compute_range 完成后
   自动算（失败不阻断）；全历史回补完成（2026-02-02~07-24，421.9 万行，84 行业）。
   注意：feature_values 无 timeframe 列，写记录不要带。
+- **补充 13（例行任务依赖检查 + 页面重构，2026-07-26）**：
+  - **precheck 框架**（feature_tasks.py）：例行任务执行前校验依赖，失败 → skipped 不执行
+    并记录原因。核心检查 `kline_coverage`（K线最新日期 ≥ 目标 end——历史"0 条空转"
+    事故的根因防线）；各任务另有 symbols/klines_all 非空检查。实测：周日触发
+    compute_incremental → 0.2s skipped（K线 7-24 < 目标 7-25）；
+  - **日志增强**：routine_task_runs.detail 记录 precheck 明细、summary、errors、
+    log_tail（subprocess 任务 3000 字符）；
+  - **admin API**：GET /routine/tasks（注册表：cron/描述/依赖/最近运行）、
+    GET /routine/tasks/source（白名单源码查看）、POST /routine/tasks/{name}/trigger；
+  - **前端**：数据管理页「数据更新任务」区块替换为「例行化任务」卡片——每任务显示
+    cron/描述/依赖检查/最近状态，按钮：执行（celery 触发）/日志（precheck+摘要+错误+
+    日志尾部）/源码（在线查看）。
 - **遗留**：
   1. 5m 回补（2026-05-01 起）在事故中中断，需断点续跑（增量模式自动从各股 MAX 续拉）；
   2. 基本面因子仅 ~202/2801 只股票有值（fundamentals JSONB 字段覆盖不足），待查；

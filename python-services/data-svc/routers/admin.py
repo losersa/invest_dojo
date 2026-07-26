@@ -495,6 +495,136 @@ async def routine_metrics(
     return {"data": rows, "days": days}
 
 
+# ── 例行化任务注册表（与 celery beat_schedule 对应，供页面展示/触发/看源码）──
+ROUTINE_TASK_DEFS: list[dict] = [
+    {
+        "name": "feature.update_klines_5m",
+        "label": "5m K线更新 + 聚合日K",
+        "cron": "每天 17:35",
+        "queue": "feature",
+        "desc": "BaoStock 增量拉取 5m K线 → upsert → 同进程聚合日K落库"
+        "（dt 约定 {date}T00:00:00+08:00，upsert 命中冲突键）。"
+        "非交易日用上交所指数自检，end 回退到最近交易日，零成本退出。",
+        "precheck_desc": "symbols 表非空",
+        "source": "scripts/update_5m_klines.py",
+        "trigger_kwargs": {},
+    },
+    {
+        "name": "feature.update_market_snapshots",
+        "label": "市场快照更新",
+        "cron": "每天 17:45",
+        "queue": "feature",
+        "desc": "更新 market_snapshots（指数收盘/北向资金/涨跌家数），"
+        "BaoStock 指数 + akshare 合并，非交易日脚本内自然跳过。",
+        "precheck_desc": "symbols 表非空",
+        "source": "scripts/update_market_snapshots.py",
+        "trigger_kwargs": {},
+    },
+    {
+        "name": "feature.compute_incremental",
+        "label": "因子增量计算",
+        "cron": "工作日 19:00",
+        "queue": "feature",
+        "desc": "计算全部公开因子最近 2 天的因子值（408+ 因子 × 全市场），"
+        "完成后自动计算横截面因子（xsec 行业 rank/z/mean）。"
+        "依赖检查：1d K线最新日期必须覆盖目标日，否则 skipped 不执行（避免 0 条空转）。",
+        "precheck_desc": "1d K线覆盖目标日期",
+        "source": "python-services/feature-svc/factors/batch_compute.py",
+        "trigger_kwargs": {"days": 2},
+    },
+    {
+        "name": "feature.collect_daily_metrics",
+        "label": "每日写入量汇总",
+        "cron": "每天 20:00",
+        "queue": "feature",
+        "desc": "按数据所属日期聚合 klines_all(5m/1d)/market_snapshots/feature_values 行数，"
+        "写入 daily_data_metrics 中间表（数据管理页图表数据源，幂等 upsert）。",
+        "precheck_desc": "klines_all 非空",
+        "source": "python-services/train-svc/feature_tasks.py",
+        "trigger_kwargs": {"days": 1},
+    },
+    {
+        "name": "feature.weekly_recompute",
+        "label": "每周全量回跑（自愈）",
+        "cron": "周六 03:00",
+        "queue": "feature",
+        "desc": "近 30 天全部因子按 7 天分段串行重算（幂等 upsert），"
+        "自愈漏算/脏数据/历史漂移；新增因子自动覆盖。"
+        "依赖检查：1d K线覆盖回跑区间终点。",
+        "precheck_desc": "1d K线覆盖目标日期",
+        "source": "python-services/train-svc/feature_tasks.py",
+        "trigger_kwargs": {"days": 30},
+    },
+]
+
+_REPO_ROOT_PATH = Path(__file__).resolve().parent.parent.parent.parent
+
+
+@router.get("/admin/data/routine/tasks", summary="例行化任务清单（调度/说明/依赖/最近运行）")
+async def routine_tasks(
+    x_user_id: str | None = Header(None, alias="X-User-Id"),
+    x_user_role: str | None = Header(None, alias="X-User-Role"),
+):
+    _require_admin(x_user_id, x_user_role)
+    client = get_supabase_client()
+    # 每个任务最近一次运行记录
+    latest: dict[str, dict] = {}
+    try:
+        rows = client.select_all(
+            "routine_task_runs",
+            columns="task_name,run_date,status,detail,duration_sec,finished_at",
+            order="finished_at.desc",
+            page_size=100,
+        )
+        for r in rows:
+            latest.setdefault(r["task_name"], r)
+    except Exception:  # noqa: BLE001
+        pass
+    data = []
+    for t in ROUTINE_TASK_DEFS:
+        data.append({**t, "trigger_kwargs": t["trigger_kwargs"], "last_run": latest.get(t["name"])})
+    return {"data": data}
+
+
+@router.get("/admin/data/routine/tasks/source", summary="例行任务源码查看（白名单文件）")
+async def routine_task_source(
+    path: str,
+    x_user_id: str | None = Header(None, alias="X-User-Id"),
+    x_user_role: str | None = Header(None, alias="X-User-Role"),
+):
+    _require_admin(x_user_id, x_user_role)
+    allowed = {t["source"] for t in ROUTINE_TASK_DEFS}
+    if path not in allowed:
+        raise _param_error("path 不在允许列表", {"allowed": sorted(allowed)})
+    fp = (_REPO_ROOT_PATH / path).resolve()
+    if not str(fp).startswith(str(_REPO_ROOT_PATH)) or not fp.is_file():
+        raise _param_error(f"文件不存在: {path}")
+    content = fp.read_text(encoding="utf-8", errors="replace")
+    truncated = len(content) > 30000
+    return {"data": {"path": path, "content": content[:30000], "truncated": truncated}}
+
+
+@router.post("/admin/data/routine/tasks/{task_name}/trigger", summary="手动触发例行任务")
+async def routine_task_trigger(
+    task_name: str,
+    x_user_id: str | None = Header(None, alias="X-User-Id"),
+    x_user_role: str | None = Header(None, alias="X-User-Role"),
+):
+    _require_admin(x_user_id, x_user_role)
+    task_def = next((t for t in ROUTINE_TASK_DEFS if t["name"] == task_name), None)
+    if task_def is None:
+        raise _param_error(
+            f"未知例行任务: {task_name}",
+            {"allowed": [t["name"] for t in ROUTINE_TASK_DEFS]},
+        )
+    from common.celery_app import celery_app  # noqa: PLC0415
+
+    r = celery_app.send_task(
+        task_name, kwargs=task_def["trigger_kwargs"], queue=task_def["queue"]
+    )
+    return {"data": {"celery_task_id": r.id, "task": task_name}}
+
+
 @router.post("/admin/data/routine/collect", summary="手动触发每日写入量汇总（回填/补漏）")
 async def routine_collect(
     days: int = 1,

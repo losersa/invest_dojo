@@ -43,6 +43,59 @@ def _run_xsec(start: str, end: str) -> dict[str, Any] | None:
         return None
 
 
+# ──────────────────────────────────────────
+# 依赖检查（precheck）：例行任务执行前的环境/数据校验
+# 结果写入 routine_task_runs.detail.precheck；关键项失败 → 任务 skipped 不执行
+# ──────────────────────────────────────────
+def _check_kline_coverage(end: str) -> dict[str, Any]:
+    """1d K线最新日期 >= end（因子计算的前置依赖；不满足则跑也是 0 条空转）"""
+    conn = _pg_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT MAX((dt AT TIME ZONE 'Asia/Shanghai')::date) "
+            "FROM klines_all WHERE timeframe='1d' AND scenario_id IS NULL"
+        )
+        latest = cur.fetchone()[0]
+        latest_str = latest.isoformat() if latest else None
+        ok = bool(latest_str and latest_str >= end)
+        return {
+            "name": "kline_coverage",
+            "ok": ok,
+            "detail": f"K线最新 {latest_str}，需要 ≥ {end}",
+            "hint": None if ok else "K线未覆盖目标日期，先跑 feature.update_klines_5m 刷新",
+        }
+    except Exception as e:  # noqa: BLE001
+        return {"name": "kline_coverage", "ok": False, "detail": str(e)[:150],
+                "hint": "检查 PG 连接"}
+    finally:
+        conn.close()
+
+
+def _check_table_nonempty(table: str, hint: str = "") -> dict[str, Any]:
+    """数据表非空检查"""
+    conn = _pg_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"SELECT COUNT(*) FROM {table}")  # noqa: S608 - 表名为内部常量
+        n = cur.fetchone()[0]
+        return {
+            "name": f"{table}_nonempty",
+            "ok": n > 0,
+            "detail": f"{table} 共 {n} 行",
+            "hint": None if n > 0 else hint or f"{table} 为空，先跑对应种子任务",
+        }
+    except Exception as e:  # noqa: BLE001
+        return {"name": f"{table}_nonempty", "ok": False, "detail": str(e)[:150],
+                "hint": "检查 PG 连接"}
+    finally:
+        conn.close()
+
+
+def _precheck_failed(checks: list[dict[str, Any]]) -> bool:
+    return any(not c["ok"] for c in checks)
+
+
 def _pg_conn():
     """直连 PG（运行记录/汇总写入用）"""
     import os  # noqa: PLC0415
@@ -116,6 +169,23 @@ def compute_incremental_task(
         symbol_count=len(symbols) if symbols else "all",
     )
     t0 = time.monotonic()
+    # 依赖检查：K线必须覆盖到目标 end（否则因子算出来也是 0 条空转——历史事故根因）
+    end_est = (datetime.now(UTC) - timedelta(days=1)).date().isoformat()
+    checks = [_check_kline_coverage(end_est)]
+    if _precheck_failed(checks):
+        logger.warning("feature.compute_incremental.precheck_failed", checks=checks)
+        _record_run(
+            "feature.compute_incremental",
+            "skipped",
+            {"days": days, "precheck": checks},
+            t0,
+        )
+        return {
+            "skipped": True,
+            "reason": "precheck_failed",
+            "precheck": checks,
+            "records_written": 0,
+        }
     try:
         result = compute_incremental(
             days=days,
@@ -151,6 +221,8 @@ def compute_incremental_task(
             "xsec_records": xsec.get("records_written") if xsec else None,
             "start": result.get("start"),
             "end": result.get("end"),
+            "precheck": checks,
+            "errors": result.get("errors", [])[:5],
         },
         t0,
     )
@@ -207,6 +279,12 @@ def update_klines_5m_task(
     增量模式（每天 ~25 万行 5m）预计 10~30 分钟。非交易日脚本自检零成本退出。
     """
     t0 = time.monotonic()
+    # 依赖检查：symbols 表非空（股票池来源）
+    checks = [_check_table_nonempty("symbols", "先跑 seed_symbols 种子任务")]
+    if _precheck_failed(checks):
+        _record_run("feature.update_klines_5m", "skipped", {"precheck": checks}, t0)
+        return {"ok": False, "skipped": True, "reason": "precheck_failed", "precheck": checks}
+
     script = _REPO_ROOT / "scripts" / "update_5m_klines.py"
     cmd = [sys.executable, str(script)]
     if from_date:
@@ -251,7 +329,12 @@ def update_klines_5m_task(
     _record_run(
         "feature.update_klines_5m",
         "skipped" if skipped else "success",
-        {"cmd": " ".join(cmd), "summary": summary},
+        {
+            "cmd": " ".join(cmd),
+            "summary": summary,
+            "precheck": checks,
+            "log_tail": tail[-3000:],  # 完整日志尾部供页面查看
+        },
         t0,
     )
     return {"ok": True, "skipped": skipped, "summary": summary, "tail": tail[-800:]}
@@ -264,6 +347,11 @@ def update_market_snapshots_task(self) -> dict[str, Any]:
     供 Celery Beat 每日 17:45 调度（在 K线任务之后，因子计算之前）。
     """
     t0 = time.monotonic()
+    checks = [_check_table_nonempty("symbols", "先跑 seed_symbols 种子任务")]
+    if _precheck_failed(checks):
+        _record_run("feature.update_market_snapshots", "skipped", {"precheck": checks}, t0)
+        return {"ok": False, "skipped": True, "reason": "precheck_failed", "precheck": checks}
+
     script = _REPO_ROOT / "scripts" / "update_market_snapshots.py"
     logger.info("feature.update_market_snapshots.start", celery_task_id=self.request.id)
     proc = subprocess.run(
@@ -292,7 +380,7 @@ def update_market_snapshots_task(self) -> dict[str, Any]:
     _record_run(
         "feature.update_market_snapshots",
         "skipped" if skipped else "success",
-        {"tail": tail[-300:]},
+        {"tail": tail[-300:], "precheck": checks, "log_tail": tail[-2000:]},
         t0,
     )
     return {"ok": True, "skipped": skipped, "tail": tail[-500:]}
@@ -408,6 +496,18 @@ def weekly_recompute_task(self, days: int = 30) -> dict[str, Any]:
     end = (datetime.now(UTC) - timedelta(days=1)).date()  # 昨天（今天可能未收盘）
     start = end - timedelta(days=days - 1)
 
+    # 依赖检查：K线必须覆盖到 end
+    checks = [_check_kline_coverage(end.isoformat())]
+    if _precheck_failed(checks):
+        logger.warning("feature.weekly_recompute.precheck_failed", checks=checks)
+        _record_run(
+            "feature.weekly_recompute",
+            "skipped",
+            {"start": str(start), "end": str(end), "precheck": checks},
+            t0,
+        )
+        return {"skipped": True, "reason": "precheck_failed", "precheck": checks}
+
     logger.info(
         "feature.weekly_recompute.start",
         celery_task_id=self.request.id,
@@ -446,7 +546,7 @@ def weekly_recompute_task(self, days: int = 30) -> dict[str, Any]:
     _record_run(
         "feature.weekly_recompute",
         status,
-        {"start": str(start), "end": str(end), "segments": segments},
+        {"start": str(start), "end": str(end), "segments": segments, "precheck": checks},
         t0,
     )
     logger.info(
