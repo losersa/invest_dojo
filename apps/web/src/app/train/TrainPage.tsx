@@ -94,6 +94,17 @@ export function TrainPage() {
   // 分钟/小时级目标 → 标签用 5m K线计算（与日频特征对齐；5m 数据自 2026-02-02 起）
   const isIntradayTarget = /return_\d+[hm]$/i.test(target.trim());
 
+  // 预测周期（天）：d → N；h/m → 1（5m 标签样本点=每日收盘，归属当日，缓冲 1 天即可）
+  const horizonDays = (() => {
+    const m = /return_(\d+)([dhm])$/i.exec(target.trim());
+    if (!m) return 5;
+    return m[2].toLowerCase() === "d" ? parseInt(m[1], 10) : 1;
+  })();
+  // 训练结束日距今天不足预测周期 → 前向标签窗口不完整，验证/测试集将为空
+  const trainEndTooLate =
+    !!trainEnd &&
+    (Date.now() - new Date(`${trainEnd}T00:00:00`).getTime()) / 86400000 < horizonDays;
+
   // 目标股票变化 → 自动检测行业并填入同行业股票池（可手动修改）
   useEffect(() => {
     const code = targetSymbol.trim();
@@ -443,6 +454,13 @@ export function TrainPage() {
                 </Field>
                 <Field label="训练结束">
                   <input type="date" value={trainEnd} onChange={(e) => setTrainEnd(e.target.value)} className="rc-input" />
+                  {trainEndTooLate && (
+                    <p className="text-[11px] text-amber-400/90 mt-1">
+                      ⚠ 训练结束日距今天不足预测周期（{horizonDays} 天）：前向标签需要未来
+                      {horizonDays} 天数据，最近的样本将被丢弃，按时间切分的验证/测试集可能为空。
+                      建议训练结束 ≤ 数据最新日期 − {horizonDays} 天。
+                    </p>
+                  )}
                 </Field>
                 <Field label="验证集切分方式">
                   <select
@@ -592,85 +610,85 @@ export function TrainPage() {
                   </div>
                 </Field>
               )}
-            </div>
 
-            {/* 同板块横截面特征 / 多股票预测单只 */}
-            <div className="rc-card space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-[15px] font-medium text-white">板块对比 & 目标股票</h3>
-                <span className="text-[11px] text-rc-text-dim">可选 · 增强横截面信息</span>
-              </div>
-
-              <Field label="预测目标股票（多股票输入预测单只，留空=全市场面板各自预测）">
-                <input
-                  value={targetSymbol}
-                  onChange={(e) => setTargetSymbol(e.target.value)}
-                  className="rc-input font-rc-mono text-[12px]"
-                  placeholder="如 600519（不填则训练全部股票）"
-                />
-                <p className="text-[11px] text-rc-text-dim mt-1.5">
-                  指定后，训练股票池自动取「该股 + 同板块同业」，标签只保留目标股票，
-                  但特征含同业聚合项，等价于「用一篮子同业作为上下文，预测其中一只的涨跌」。
-                </p>
-              </Field>
-
-              <div className="flex items-center gap-2 pt-1">
-                <label className="flex items-center gap-2 text-[13px] text-rc-text-secondary">
-                  <input
-                    type="checkbox"
-                    checked={peerEnabled}
-                    onChange={(e) => setPeerEnabled(e.target.checked)}
-                    className="accent-rc-blue"
-                  />
-                  开启同板块横截面特征（当前股票在同业中的排名 / 关系）
-                </label>
-              </div>
-
-              {peerEnabled && (
-                <div className="space-y-4 border-l-2 border-rc-border-subtle pl-3">
-                  <Field label="分组维度（同业 / 同板块 的判定口径）">
-                    <select
-                      value={peerGroupBy}
-                      onChange={(e) =>
-                        setPeerGroupBy(e.target.value as "industry" | "industry_level2" | "market")
-                      }
-                      className="rc-input"
-                    >
-                      <option value="industry">行业 industry</option>
-                      <option value="industry_level2">二级行业 industry_level2</option>
-                      <option value="market">市场 market</option>
-                    </select>
-                  </Field>
-
-                  <Field label="特征类型（可多选）">
-                    <div className="flex flex-wrap gap-1.5">
-                      {([
-                        { m: "rank", t: "组内排名" },
-                        { m: "relative", t: "相对强弱(Z)" },
-                        { m: "sector_mean", t: "板块均值" },
-                        { m: "sector_return", t: "板块前向收益" },
-                      ] as const).map(({ m, t }) => (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => togglePeerMode(m)}
-                          className={`px-2.5 py-1 rounded-[5px] border text-[11px] transition ${
-                            peerModes.has(m)
-                              ? "border-rc-blue bg-rc-blue/10 text-rc-blue"
-                              : "border-rc-border-subtle text-rc-text-muted hover:border-rc-border-input"
-                          }`}
-                        >
-                          {t}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-[11px] text-rc-text-dim mt-1.5">
-                      rank=该因子在组内同日的百分位排名；relative=(自身−组内均值)/组内标准差；
-                      sector_mean=板块整体水位；sector_return=板块未来涨跌均值。
-                    </p>
-                  </Field>
+              {/* ── 板块对比 & 目标股票（并入训练参数）── */}
+              <div className="border-t border-rc-border-subtle pt-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-[13px] font-medium text-white">板块对比 & 目标股票</h4>
+                  <span className="text-[11px] text-rc-text-dim">可选 · 增强横截面信息</span>
                 </div>
-              )}
+
+                <Field label="预测目标股票（多股票输入预测单只，留空=全市场面板各自预测）">
+                  <input
+                    value={targetSymbol}
+                    onChange={(e) => setTargetSymbol(e.target.value)}
+                    className="rc-input font-rc-mono text-[12px]"
+                    placeholder="如 600519（不填则训练全部股票）"
+                  />
+                  <p className="text-[11px] text-rc-text-dim mt-1.5">
+                    指定后，训练股票池自动取「该股 + 同板块同业」，标签只保留目标股票，
+                    但特征含同业聚合项，等价于「用一篮子同业作为上下文，预测其中一只的涨跌」。
+                  </p>
+                </Field>
+
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 text-[13px] text-rc-text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={peerEnabled}
+                      onChange={(e) => setPeerEnabled(e.target.checked)}
+                      className="accent-rc-blue"
+                    />
+                    开启同板块横截面特征（当前股票在同业中的排名 / 关系）
+                  </label>
+                </div>
+
+                {peerEnabled && (
+                  <div className="space-y-4 border-l-2 border-rc-border-subtle pl-3">
+                    <Field label="分组维度（同业 / 同板块 的判定口径）">
+                      <select
+                        value={peerGroupBy}
+                        onChange={(e) =>
+                          setPeerGroupBy(e.target.value as "industry" | "industry_level2" | "market")
+                        }
+                        className="rc-input"
+                      >
+                        <option value="industry">行业 industry</option>
+                        <option value="industry_level2">二级行业 industry_level2</option>
+                        <option value="market">市场 market</option>
+                      </select>
+                    </Field>
+
+                    <Field label="特征类型（可多选）">
+                      <div className="flex flex-wrap gap-1.5">
+                        {([
+                          { m: "rank", t: "组内排名" },
+                          { m: "relative", t: "相对强弱(Z)" },
+                          { m: "sector_mean", t: "板块均值" },
+                          { m: "sector_return", t: "板块前向收益" },
+                        ] as const).map(({ m, t }) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => togglePeerMode(m)}
+                            className={`px-2.5 py-1 rounded-[5px] border text-[11px] transition ${
+                              peerModes.has(m)
+                                ? "border-rc-blue bg-rc-blue/10 text-rc-blue"
+                                : "border-rc-border-subtle text-rc-text-muted hover:border-rc-border-input"
+                            }`}
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-rc-text-dim mt-1.5">
+                        rank=该因子在组内同日的百分位排名；relative=(自身−组内均值)/组内标准差；
+                        sector_mean=板块整体水位；sector_return=板块未来涨跌均值。
+                      </p>
+                    </Field>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* 因子多选 */}
