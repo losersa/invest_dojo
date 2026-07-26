@@ -648,7 +648,9 @@ def _get_pg_conn():
         password=pg_password,
         dbname="postgres",
         connect_timeout=5,
-        options="-c statement_timeout=10000",
+        # 120s：内部员工工具，大表聚合（如 feature_values 1.6 亿行 GROUP BY）
+        # 需要更长窗口；仍有兜底防失控查询拖垮 DB
+        options="-c statement_timeout=120000",
     )
 
 
