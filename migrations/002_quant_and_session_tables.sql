@@ -22,7 +22,7 @@
 
 -- profiles 用户资料（配合 Supabase Auth）
 CREATE TABLE IF NOT EXISTS profiles (
-    id               UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    id               UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
     display_name     TEXT,
     avatar_url       TEXT,
     bio              TEXT,
@@ -38,7 +38,7 @@ COMMENT ON TABLE profiles IS '用户资料（Supabase Auth 扩展）';
 
 -- user_preferences 用户偏好
 CREATE TABLE IF NOT EXISTS user_preferences (
-    user_id                    UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    user_id                    UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
     default_copilot_model      TEXT,
     data_collection_opt_in     BOOLEAN DEFAULT TRUE,
     contribute_to_public_pool  BOOLEAN DEFAULT FALSE,
@@ -181,7 +181,7 @@ COMMENT ON TABLE model_versions IS '模型版本管理（每次训练产生一�
 -- backtests 回测记录
 CREATE TABLE IF NOT EXISTS backtests (
     id                   TEXT PRIMARY KEY,
-    user_id              UUID REFERENCES auth.users(id),
+    user_id              UUID REFERENCES public.users(id),
     model_id             TEXT REFERENCES models(id),
     config               JSONB NOT NULL,
     mode                 TEXT NOT NULL,                 -- fast/realistic
@@ -233,7 +233,7 @@ COMMENT ON TABLE training_jobs IS '训练任务队列（Celery 入库状态）';
 -- sessions 会话（四种联动模式的核心）
 CREATE TABLE IF NOT EXISTS sessions (
     id                      TEXT PRIMARY KEY,
-    user_id                 UUID REFERENCES auth.users(id),
+    user_id                 UUID REFERENCES public.users(id),
     scenario_id             TEXT REFERENCES scenarios(id),
     mode                    TEXT NOT NULL,             -- solo/copilot_observer/pk/copilot_interactive
     blind_options           JSONB,
@@ -338,7 +338,7 @@ COMMENT ON TABLE orders IS '会话内的订单（人 + 模型共用）';
 -- training_samples 训练样本（模式 ④ 数据闭环）
 CREATE TABLE IF NOT EXISTS training_samples (
     id                  BIGSERIAL PRIMARY KEY,
-    user_id             UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    user_id             UUID REFERENCES public.users(id) ON DELETE CASCADE,
     session_id          TEXT,
     ts                  TIMESTAMPTZ NOT NULL,
     symbol              TEXT,
@@ -365,7 +365,7 @@ COMMENT ON TABLE training_samples IS '训练样本（数据闭环）';
 
 -- model_stars 模型收藏
 CREATE TABLE IF NOT EXISTS model_stars (
-    user_id     UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    user_id     UUID REFERENCES public.users(id) ON DELETE CASCADE,
     model_id    TEXT REFERENCES models(id) ON DELETE CASCADE,
     starred_at  TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (user_id, model_id)
@@ -379,7 +379,7 @@ CREATE TABLE IF NOT EXISTS share_links (
     token          TEXT PRIMARY KEY,
     resource_type  TEXT NOT NULL,                     -- backtest/debrief/model
     resource_id    TEXT NOT NULL,
-    created_by     UUID REFERENCES auth.users(id),
+    created_by     UUID REFERENCES public.users(id),
     options        JSONB,
     expires_at     TIMESTAMPTZ,
     access_count   INT DEFAULT 0,

@@ -13,6 +13,22 @@
 -- ==============================================================
 
 
+-- ═══════ 兜底：无 Supabase Auth 时补齐 auth schema 桩函数 ═══════
+-- 原策略依赖 auth.uid() / auth.role()（GoTrue 注入）。本项目已改用自建
+-- 鉴权（public.users + JWT），Python 微服务以超级用户直连 PG、天然绕过 RLS，
+-- 故即便 auth 桩函数存在也不会被实际执行。此处仅在 auth schema 缺失时补桩，
+-- 保证本迁移在「无 GoTrue」的全新库上也能幂等通过。
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'auth') THEN
+        CREATE SCHEMA auth;
+        CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULL::uuid $$;
+        CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$ SELECT 'authenticated'::text $$;
+        RAISE NOTICE '── 已为 005 补齐 auth 桩函数（无 GoTrue 环境）──';
+    END IF;
+END$$;
+
+
 -- ═══════ 辅助函数：获取当前用户 ID ═══════
 -- Supabase 内置 auth.uid() 可用，但我们也用 JWT claim
 CREATE OR REPLACE FUNCTION auth_uid()
