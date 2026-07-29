@@ -33,3 +33,6 @@ python-services/.task_history/
 apps/web/.next/
 __pycache__/
 *.pyc
+
+# agent / working memory (not project source)
+.codebuddy/
