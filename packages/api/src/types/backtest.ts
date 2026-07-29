@@ -73,9 +73,32 @@ export interface EquityCurve {
   dates: string[];
   portfolio: number[];
   benchmark: number[];
+  benchmark_price?: number[];
   drawdown: number[];
   cash: number[];
   positions_count: number[];
+}
+
+/** 横截面策略（factor/composite/signal_file）的期末 Top-N 持仓 */
+export interface HoldingInfo {
+  symbol: string;
+  weight: number;
+  ret: number;
+}
+
+/** 回测结果附带元信息（样本内/外、持仓、基准名等） */
+export interface BacktestMeta {
+  engine?: string;
+  strategy_type?: string | null;
+  benchmark_name?: string;
+  in_sample?: boolean | null;
+  training_range?: { start: string; end: string } | null;
+  overlap_days?: number | null;
+  holdings?: HoldingInfo[];
+  n_symbols?: number;
+  universe_resolved?: string;
+  source?: string;
+  [k: string]: unknown;
 }
 
 export interface PeriodStats {
@@ -110,6 +133,7 @@ export interface BacktestResult {
   id: string;
   config: BacktestConfig;
   status: BacktestStatus;
+  progress?: { pct: number; stage: string } | null;
   summary: BacktestSummary;
   equity_curve: EquityCurve;
   segment_performance?: Record<string, PeriodStats> | null;
@@ -118,6 +142,8 @@ export interface BacktestResult {
   duration_ms?: number;
   created_at: string;
   completed_at?: string | null;
+  /** 附带元信息：样本内/外、Top-N 持仓、基准名等 */
+  meta?: BacktestMeta;
 }
 
 export interface QuickFactorRequest {

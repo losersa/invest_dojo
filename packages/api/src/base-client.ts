@@ -5,7 +5,7 @@
  * - baseURL 拼接 + query string 序列化
  * - 统一错误抛出（解析 ApiError）
  * - JSON 序列化/反序列化
- * - 可选 Bearer token 注入（Supabase JWT，Epic 7 接入 Auth）
+ * - 可选 Bearer token 注入（自建鉴权 JWT / service key）
  */
 import type { ApiErrorBody } from "./types/common";
 import { ApiError } from "./types/common";
@@ -21,7 +21,7 @@ export type QueryValue =
 
 export interface ClientOptions {
   baseURL: string;
-  /** 可选 Bearer token（Supabase JWT / service key） */
+  /** 可选 Bearer token（自建鉴权 JWT / service key） */
   token?: string | (() => string | Promise<string>);
   /** 超时（ms），默认 30s */
   timeoutMs?: number;

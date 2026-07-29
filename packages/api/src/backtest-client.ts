@@ -21,6 +21,12 @@ export class BacktestClient extends BaseClient {
     return this.post("/api/v1/backtests/run-fast", config);
   }
 
+  runAsync(
+    config: BacktestConfig,
+  ): Promise<{ data: { id: string; status: string }; meta: Record<string, unknown> }> {
+    return this.post("/api/v1/backtests", config);
+  }
+
   quickFactor(
     req: QuickFactorRequest,
   ): Promise<{ data: Partial<BacktestResult> & { factor_id: string }; meta: Record<string, unknown> }> {

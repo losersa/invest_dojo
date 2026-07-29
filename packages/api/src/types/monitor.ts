@@ -16,7 +16,7 @@ export interface ServiceHealth {
 export interface InfraHealth {
   redis: { status: "ok" | "down" };
   minio: { status: "ok" | "down" };
-  supabase: { status: "ok" | "down" };
+  postgres: { status: "ok" | "down" };
 }
 
 export interface StatsData {

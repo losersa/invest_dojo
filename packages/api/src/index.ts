@@ -28,8 +28,6 @@
  */
 
 // ── 旧 exports（保留兼容） ──
-export { getSupabase, type SupabaseClient } from "./supabase";
-export { RealtimeSync, type RealtimeCallbacks, type RealtimeEvent } from "./realtime";
 export {
   fetchScenarioList,
   fetchScenarioData,
@@ -114,8 +112,8 @@ export interface InvestDojoSDK {
 export interface SDKOptions {
   baseURLs?: SDKBaseURLs;
   token?: string | (() => string | Promise<string>);
-  /** 当前用户 id，写接口（因子 CRUD / 发布等）会带到 X-User-Id header */
-  userId?: string | (() => string | undefined);
+  /** 当前用户 id，写接口（因子 CRUD / 发布等）会带到 X-User-Id header；可为异步（如等待自建鉴权会话就绪） */
+  userId?: string | (() => string | undefined | Promise<string | undefined>);
   timeoutMs?: number;
   /** 自定义 fetch（浏览器内用于同源代理重写） */
   fetchImpl?: typeof fetch;
@@ -127,7 +125,7 @@ export function createInvestDojoClient(opts: SDKOptions = {}): InvestDojoSDK {
   return {
     data: new DataClient({ baseURL: urls.data, ...common }),
     factors: new FactorClient({ baseURL: urls.feature, ...common, userId: opts.userId }),
-    training: new TrainClient({ baseURL: urls.train, ...common }),
+    training: new TrainClient({ baseURL: urls.train, ...common, userId: opts.userId }),
     inference: new InferenceClient({ baseURL: urls.infer, ...common }),
     backtests: new BacktestClient({ baseURL: urls.backtest, ...common }),
     monitor: new MonitorClient({ baseURL: urls.monitor, ...common }),

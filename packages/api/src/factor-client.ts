@@ -22,8 +22,8 @@ import type {
 } from "./types";
 
 export interface FactorClientOptions extends ClientOptions {
-  /** 当前用户 id，写接口会带到 X-User-Id header。MVP 用，生产改走 Supabase JWT */
-  userId?: string | (() => string | undefined);
+  /** 当前用户 id，写接口会带到 X-User-Id header（自建鉴权，由前端 auth 模块注入） */
+  userId?: string | (() => string | undefined | Promise<string | undefined>);
 }
 
 export class FactorClient extends BaseClient {
@@ -34,10 +34,10 @@ export class FactorClient extends BaseClient {
     this.userIdProvider = opts.userId;
   }
 
-  private userHeaders(): Record<string, string> {
+  private async userHeaders(): Promise<Record<string, string>> {
     const uid =
       typeof this.userIdProvider === "function"
-        ? this.userIdProvider()
+        ? await this.userIdProvider()
         : this.userIdProvider;
     return uid ? { "X-User-Id": uid } : {};
   }
@@ -63,7 +63,6 @@ export class FactorClient extends BaseClient {
   ): Promise<PaginatedResponse<Factor>> {
     return this.request<PaginatedResponse<Factor>>("GET", "/api/v1/factors", {
       query: params as Record<string, string | number | boolean | null | undefined>,
-      headers: this.userHeaders(),
     });
   }
 
@@ -156,48 +155,48 @@ export class FactorClient extends BaseClient {
   }
 
   // ── 写（X-User-Id header） ──────────────────
-  createFactor(body: FactorCreatePayload): Promise<SingleResponse<Factor>> {
+  async createFactor(body: FactorCreatePayload): Promise<SingleResponse<Factor>> {
     return this.request<SingleResponse<Factor>>("POST", "/api/v1/factors", {
       body,
-      headers: this.userHeaders(),
+      headers: await this.userHeaders(),
     });
   }
 
-  updateFactor(
+  async updateFactor(
     id: string,
     body: FactorUpdatePayload,
   ): Promise<SingleResponse<Factor>> {
     return this.request<SingleResponse<Factor>>(
       "PUT",
       `/api/v1/factors/${encodeURIComponent(id)}`,
-      { body, headers: this.userHeaders() },
+      { body, headers: await this.userHeaders() },
     );
   }
 
-  deleteFactor(id: string): Promise<void> {
+  async deleteFactor(id: string): Promise<void> {
     return this.request<void>(
       "DELETE",
       `/api/v1/factors/${encodeURIComponent(id)}`,
-      { headers: this.userHeaders() },
+      { headers: await this.userHeaders() },
     );
   }
 
-  publishFactor(
+  async publishFactor(
     id: string,
     body: { long_description?: string; license?: string } = {},
   ): Promise<SingleResponse<Factor>> {
     return this.request<SingleResponse<Factor>>(
       "POST",
       `/api/v1/factors/${encodeURIComponent(id)}/publish`,
-      { body, headers: this.userHeaders() },
+      { body, headers: await this.userHeaders() },
     );
   }
 
-  unpublishFactor(id: string): Promise<SingleResponse<Factor>> {
+  async unpublishFactor(id: string): Promise<SingleResponse<Factor>> {
     return this.request<SingleResponse<Factor>>(
       "POST",
       `/api/v1/factors/${encodeURIComponent(id)}/unpublish`,
-      { headers: this.userHeaders() },
+      { headers: await this.userHeaders() },
     );
   }
 }
