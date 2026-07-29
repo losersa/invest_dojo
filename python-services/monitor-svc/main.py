@@ -91,7 +91,7 @@ async def stats():
     return {
         "data": counts,
         "meta": {
-            "source": "supabase.postgrest.count_exact",
+            "source": "postgres.count_exact",
             "elapsed_ms": elapsed,
             "timestamp": datetime.now(UTC).isoformat(),
         },

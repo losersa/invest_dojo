@@ -12,7 +12,7 @@ from common_utils import (
 from fastapi import APIRouter, Depends, Query
 
 from common import get_logger
-from common.supabase_client import get_supabase_client
+from common.pg_client import get_pg_client
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -29,7 +29,7 @@ async def list_symbols(
     pg: dict = Depends(pagination_params),
 ):
     """查询股票列表（支持按代码/市场/行业/指数/搜索 + 分页）"""
-    client = get_supabase_client()
+    client = get_pg_client()
 
     filters: dict[str, str] = {}
     if codes:
@@ -78,7 +78,7 @@ async def list_symbols(
 
 @router.get("/symbols/{code}", summary="单只股票详情")
 async def get_symbol(code: str):
-    client = get_supabase_client()
+    client = get_pg_client()
     rows = client.select(
         "symbols",
         filters={"code": f"eq.{code}"},
@@ -97,7 +97,7 @@ async def get_symbol(code: str):
 async def list_industries(
     level: int | None = Query(None, ge=1, le=2),
 ):
-    client = get_supabase_client()
+    client = get_pg_client()
     filters: dict[str, str] = {}
     if level is not None:
         filters["level"] = f"eq.{level}"

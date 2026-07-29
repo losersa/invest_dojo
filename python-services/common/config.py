@@ -23,7 +23,7 @@ class Settings(BaseSettings):
             Path(__file__).parent.parent.parent
             / "apps"
             / "server"
-            / ".env",  # 复用主项目的 Supabase key
+            / ".env",  # 复用主项目的 .env
         ],
         env_file_encoding="utf-8",
         case_sensitive=False,
@@ -36,18 +36,13 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO")
     log_format: str = Field(default="pretty", description="pretty/json")
 
-    # ── Supabase（仅前端使用；Python 微服务已改为直连 PostgreSQL）──
-    supabase_url: str = Field(default="https://adqznqsciqtepzimcvsg.supabase.co")
-    supabase_service_role_key: str = Field(default="", description="服务端 key，绕过 RLS")
-    supabase_anon_key: str = Field(default="", description="公开 key，遵守 RLS")
-
     # ── 直连 PostgreSQL（Python 微服务）──
-    # 与 infra/supabase-lite 的 db 容器共用同一套凭据（POSTGRES_PASSWORD）。
+    # 与 infra 的 db 容器共用同一套凭据（POSTGRES_PASSWORD）。
     # 服务运行在本机，通过 localhost:5432 连接；容器内则用 db:5432。
     pg_host: str = Field(default="localhost", description="PG 主机（本机 localhost / 容器内 db）")
     pg_port: int = Field(default=5432)
     pg_user: str = Field(default="postgres")
-    pg_password: str = Field(default="", description="与 supabase-lite db 的 POSTGRES_PASSWORD 一致")
+    pg_password: str = Field(default="", description="与 infra db 的 POSTGRES_PASSWORD 一致")
     pg_database: str = Field(default="postgres", description="数据库名")
 
     # ── Redis ──
@@ -69,6 +64,12 @@ class Settings(BaseSettings):
     infer_svc_port: int = Field(default=8003)
     backtest_svc_port: int = Field(default=8004)
     monitor_svc_port: int = Field(default=8005)
+
+    # ── 自建鉴权模块（替代原 Supabase Auth）──
+    # JWT 签名密钥；生产务必通过环境变量 AUTH_JWT_SECRET 覆盖
+    auth_jwt_secret: str = Field(default="investdojo-dev-jwt-secret-v1")
+    auth_session_cookie: str = Field(default="id_session")
+    auth_token_ttl_seconds: int = Field(default=86400)
 
     # ── 安全/限制 ──
     request_timeout_seconds: int = Field(default=30)

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from datetime import datetime, timedelta
 from typing import Any
 
 from common_utils import (
@@ -29,9 +30,9 @@ from common_utils import (
     utc_now_iso,
 )
 
-from common import celery_app, get_logger, get_supabase_client
+from common import celery_app, get_logger, get_pg_client
 from common.minio_client import MinioPath, upload_bytes
-from pipeline import booster_to_bytes, build_dataset, train_lightgbm
+from pipeline import booster_to_bytes, build_dataset, parse_horizon_tf, train_lightgbm
 
 logger = get_logger(__name__)
 
@@ -48,7 +49,7 @@ def _update_job_status(
     completed: bool = False,
 ) -> None:
     """统一更新 training_jobs 状态"""
-    client = get_supabase_client()
+    client = get_pg_client()
 
     patch: dict[str, Any] = {"status": status}
     if progress is not None:
@@ -163,7 +164,7 @@ def _default_platform_factors(limit: int = 60) -> list[str]:
     故默认回退到数值/排名型因子；若为空再兜底取任意 platform 因子。
     """
     try:
-        client = get_supabase_client()
+        client = get_pg_client()
         rows = client.select(
             "factor_definitions",
             columns="id",
@@ -205,6 +206,13 @@ def lightgbm_train(self, job_id: str, config: dict) -> dict:
         target = config.get("target", "return_5d")
         train_start = config.get("train_start")
         train_end = config.get("train_end")
+        test_start = config.get("test_start")
+        test_end = config.get("test_end")
+        refit_on_valid = bool(config.get("refit_on_valid", False))
+        # 给了测试集但没给训练结束日：以测试集前一日作为训练窗口上界，
+        # 避免测试样本被并入训练/验证切分（split_train_valid 按 train_end 排除）。
+        if test_start and test_end and not train_end:
+            train_end = (datetime.fromisoformat(test_start) - timedelta(days=1)).strftime("%Y-%m-%d")
         symbols = config.get("symbols")
         target_symbol = config.get("target_symbol")
         peer = config.get("peer")
@@ -223,9 +231,25 @@ def lightgbm_train(self, job_id: str, config: dict) -> dict:
         df, used = build_dataset(
             factor_ids, target, train_start, train_end, symbols,
             label_spec=label_spec, target_symbol=target_symbol, peer=peer,
+            test_start=test_start, test_end=test_end,
         )
 
         _update_job_status(job_id, status=STATUS_RUNNING, stage="fitting", progress=0.4)
+
+        # 隔离带 = 前向标签周期：cutoff 前 H 个交易日的训练标签会延伸进验证
+        # 窗口（边界泄漏）。1d 标签 H=N 天；5m 标签 H=⌈bars/48⌉ 天（每天 48 根）
+        _h_bars, _h_tf = parse_horizon_tf(target)
+        embargo_days = _h_bars if _h_tf == "1d" else max(1, (_h_bars + 47) // 48)
+        params = {
+            **params,
+            "embargo_days": embargo_days,
+            # 透传给 train_lightgbm：切分排除测试集、计算测试集索引、调参用验证集
+            "train_end": train_end,
+            "test_start": test_start,
+            "test_end": test_end,
+            # 最终模型是否并入验证集全量训练
+            "refit_on_valid": refit_on_valid,
+        }
 
         result = train_lightgbm(df, used, params=params)
 
@@ -243,7 +267,7 @@ def lightgbm_train(self, job_id: str, config: dict) -> dict:
         file_path = upload_bytes(object_name, model_bytes, content_type="application/octet-stream")
 
         # ── 注册模型 ──
-        client = get_supabase_client()
+        client = get_pg_client()
         # 默认名带 model_id 后缀，保证 (owner,name,version) 唯一，避免重复训练冲突
         model_name = config.get("model_name") or f"lightgbm_{target}_{model_id}"
         client.insert(
@@ -272,7 +296,16 @@ def lightgbm_train(self, job_id: str, config: dict) -> dict:
                     # 记录「同板块横截面特征 / 多股票预测单只」配置，便于回溯
                     "target_symbol": target_symbol,
                     "peer": peer or {"enabled": False},
+                    # 训练股票池快照：回测复现 peer 横截面特征时必须用同一参照系
+                    "symbols": symbols,
                     "split_method": (params or {}).get("split_method", "time"),
+                    # 自适应二分类阈值（训练集 Youden J），推理/回测判正类时应与此对齐
+                    "cls_threshold": result.get("cls_threshold"),
+                    # 预留测试集范围与样本数：便于对比「验证集 vs 测试集」泛化漂移
+                    "test_range": (
+                        {"start": test_start, "end": test_end} if test_start and test_end else None
+                    ),
+                    "n_test": result.get("n_test"),
                 },
                 "status": "ready",
             },
@@ -301,8 +334,11 @@ def lightgbm_train(self, job_id: str, config: dict) -> dict:
         metrics = {
             "train_auc": result["train_auc"],
             "valid_auc": result["valid_auc"],
+            # 预留测试集 AUC（未预留或测试集单类别时为 None，前端据此隐藏该项）
+            "test_auc": result.get("test_auc"),
             "train_samples": result["n_train"],
             "valid_samples": result["n_valid"],
+            "test_samples": result.get("n_test", 0),
             # 特征输入顺序（模型 predict 时的列序，回测/推理必须严格对齐）
             "feature_cols": result["feature_cols"],
             # 完整评估指标表（训练/验证：AUC/准确/精确/召回/F1/混淆）
@@ -311,6 +347,8 @@ def lightgbm_train(self, job_id: str, config: dict) -> dict:
             "feature_importance": top_imp,
             "model_id": model_id,
             "file_path": file_path,
+            # 自适应二分类阈值（训练集 Youden J），评估指标表同口径
+            "cls_threshold": result.get("cls_threshold"),
         }
 
         _update_job_status(

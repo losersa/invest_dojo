@@ -76,9 +76,18 @@ def upload_bytes(
     return f"{bucket}/{object_name}"
 
 
+def _strip_bucket_prefix(object_name: str, bucket: str) -> str:
+    """容忍传入带 bucket 前缀的完整路径（如 models.file_path 存的
+    "investdojo/models/..."），剥掉前缀得到真实 object_name，
+    避免出现 bucket=bucket + object=bucket/... 的双重前缀（NoSuchKey）。"""
+    prefix = f"{bucket}/"
+    return object_name[len(prefix):] if object_name.startswith(prefix) else object_name
+
+
 def download_bytes(object_name: str, *, bucket: str | None = None) -> bytes:
-    """下载对象为字节"""
+    """下载对象为字节（object_name 可带或不带 bucket 前缀）"""
     bucket = bucket or settings.minio_bucket
+    object_name = _strip_bucket_prefix(object_name, bucket)
     client = get_minio()
 
     resp = client.get_object(bucket, object_name)
@@ -96,10 +105,11 @@ def get_presigned_url(
     expires_seconds: int = 600,
     method: str = "GET",
 ) -> str:
-    """获取预签名 URL（默认 10 分钟有效）"""
+    """获取预签名 URL（默认 10 分钟有效；object_name 可带或不带 bucket 前缀）"""
     from datetime import timedelta
 
     bucket = bucket or settings.minio_bucket
+    object_name = _strip_bucket_prefix(object_name, bucket)
     client = get_minio()
     expires = timedelta(seconds=expires_seconds)
 

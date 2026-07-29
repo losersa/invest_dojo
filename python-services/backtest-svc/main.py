@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 from common_utils import (
@@ -17,14 +18,14 @@ from common_utils import (
 from fastapi import APIRouter, Query
 from mock_engine import new_backtest_id, run_mock_backtest
 
-from common import create_app, get_logger, get_supabase_client, settings
+from common import create_app, get_logger, get_pg_client, settings
 
 logger = get_logger("backtest-svc")
 
 app = create_app(
     service_name="backtest-svc",
     version="0.1.0",
-    description="回测服务（MVP 用 mock 引擎；Epic 4 接 VectorBT / Backtrader）",
+    description="回测服务（model / factor / composite / signal_file 均接真实引擎）",
 )
 
 
@@ -73,12 +74,13 @@ async def root() -> dict:
         "health": "/health",
         "port": settings.backtest_svc_port,
         "endpoints": [
+            "POST /api/v1/backtests (异步提交，轮询 GET /{id})",
             "POST /api/v1/backtests/run-fast",
             "POST /api/v1/backtests/quick-factor",
             "GET  /api/v1/backtests/{id}",
             "GET  /api/v1/backtests",
         ],
-        "status": "Epic 2 骨架 · mock 引擎；真实引擎见 Epic 4",
+        "status": "model 类型接真实回测引擎（复用训练特征工程 + 模型预测）",
     }
 
 
@@ -86,6 +88,43 @@ async def root() -> dict:
 # 业务路由
 # ──────────────────────────────────────────
 router = APIRouter(prefix="/api/v1/backtests", tags=["backtests"])
+
+
+@router.post("", summary="创建回测（异步，提交到任务队列，需轮询 GET /{id}）")
+async def create_backtest(config: BacktestConfig):
+    """提交异步回测任务，立即返回 {id, status}。
+
+    任意 mode / strategy 类型都走异步：strategy.type=='model' 走真实引擎，
+    其余走 mock。前端轮询 GET /api/v1/backtests/{id} 取进度与结果。
+    """
+    _validate_strategy(config.strategy)
+    bt_id = new_backtest_id()
+    now = datetime.now(UTC).isoformat()
+    config_dict = config.model_dump()
+    client = get_pg_client()
+    client.insert(
+        "backtests",
+        {
+            "id": bt_id,
+            "model_id": config.strategy.model_id if config.strategy.type == "model" else None,
+            "user_id": None,
+            "mode": config.mode,
+            "status": "pending",
+            "config": config_dict,
+            "created_at": now,
+        },
+    )
+    # 提交到 Celery 的 backtest 队列（懒导入，避免服务启动时强制连 broker）
+    from common.celery_app import celery_app as _celery
+
+    _celery.send_task("backtest.run_backtest", args=[bt_id, config_dict])
+    return {
+        "data": {"id": bt_id, "status": "pending"},
+        "meta": {
+            "engine": "real" if config.strategy.type == "model" else "real_xsec",
+            "poll_url": f"/api/v1/backtests/{bt_id}",
+        },
+    }
 
 
 @router.post("/run-fast", summary="快速回测（同步，mock）")
@@ -112,9 +151,18 @@ async def run_fast(config: BacktestConfig):
             suggested_endpoint="POST /api/v1/backtests",
         )
 
-    # 跑 mock 引擎
+    # 跑引擎：所有类型统一走真实引擎（model 走模型预测 + 资金模拟；
+    # factor/composite/signal_file 走横截面打分 + 组合模拟）。
     config_dict = config.model_dump()
-    result = run_mock_backtest(config_dict)
+    try:
+        from real_engine import run_real_backtest
+
+        # 真实引擎需复现训练特征工程 / 拉因子 / 模拟，耗时数十秒，
+        # 放进线程池避免阻塞 event loop（run-fast 是同步接口）。
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, run_real_backtest, config_dict)
+    except ValueError as e:
+        raise api_error(ErrorCode.INVALID_PARAM, str(e))
 
     bt_id = new_backtest_id()
     now = datetime.now(UTC).isoformat()
@@ -122,7 +170,7 @@ async def run_fast(config: BacktestConfig):
     # 写库（落到 backtests 表）
     # 注意：model_id 有 FK 到 models 表，MVP 阶段 mock 模型未入库，
     # 所以 model_id 统一存 null；真实策略的 model_id 已保存在 config.strategy.model_id
-    client = get_supabase_client()
+    client = get_pg_client()
     try:
         client.insert(
             "backtests",
@@ -172,9 +220,14 @@ async def run_fast(config: BacktestConfig):
             "completed_at": now,
         },
         "meta": {
-            "engine": "mock",
             "estimated_seconds": est,
-            "seed": result["_seed"],
+            "seed": result.get("_seed", 0),
+            "engine": result.get("meta", {}).get("engine", "mock"),
+            **(
+                {k: v for k, v in result.get("meta", {}).items() if k != "engine"}
+                if isinstance(result.get("meta"), dict)
+                else {}
+            ),
         },
     }
 
@@ -218,7 +271,7 @@ async def list_backtests(
     if user_id:
         filters["user_id"] = f"eq.{user_id}"
 
-    client = get_supabase_client()
+    client = get_pg_client()
     total = client.count("backtests", filters=filters)
     offset = (page - 1) * page_size
     rows = client.select(
@@ -245,7 +298,7 @@ async def list_backtests(
 
 @router.get("/{backtest_id}", summary="回测详情")
 async def get_backtest(backtest_id: str):
-    client = get_supabase_client()
+    client = get_pg_client()
     rows = client.select(
         "backtests",
         filters={"id": f"eq.{backtest_id}"},

@@ -49,7 +49,7 @@ export MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD:-investdojo_dev_only}"
 export MINIO_BUCKET="${MINIO_BUCKET:-investdojo}"
 
 # factors 包位于 feature-svc，必须加入 PYTHONPATH 才能被 celery_worker 导入
-export PYTHONPATH="$PY:$PY/train-svc:$PY/feature-svc"
+export PYTHONPATH="$PY:$PY/train-svc:$PY/feature-svc:$PY/backtest-svc"
 export ENABLE_DAILY_BEAT=1
 
 mkdir -p "$LOG_DIR"
@@ -64,6 +64,13 @@ echo "   worker pid=$!"
 setsid -- "$VENV_PY" -m celery -A celery_worker.celery_app beat --loglevel=info \
   > "$LOG_DIR/celery-beat.log" 2>&1 < /dev/null &
 echo "   beat   pid=$!"
+
+# ── backtest worker（消费 backtest.* 队列，异步回测任务）──
+cd "$PY/backtest-svc"
+setsid -- "$VENV_PY" -m celery -A backtest_celery.celery_app worker --loglevel=info --queues=backtest --concurrency=2 \
+  > "$LOG_DIR/celery-backtest-worker.log" 2>&1 < /dev/null &
+echo "   backtest worker pid=$!"
+cd "$celeryWorkdir"
 
 echo "✅ 已启动。日志："
 echo "   tail -f $LOG_DIR/celery-worker.log"

@@ -24,14 +24,17 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import (
     accuracy_score,
+    average_precision_score,
     confusion_matrix,
     f1_score,
+    log_loss,
     precision_score,
     recall_score,
     roc_auc_score,
+    roc_curve,
 )
 
-from common import get_logger, get_supabase_client
+from common import get_logger, get_pg_client
 
 logger = get_logger(__name__)
 
@@ -68,7 +71,7 @@ def parse_horizon_tf(target: str) -> tuple[int, str]:
     """解析前向周期 → (horizon, timeframe)。
 
     - `return_Nd` → (N, '1d')：日频标签（历史全量可用）
-    - `return_Nh` → (N*12, '5m')：5m bar 标签（真实小时级，数据自 2026-02-02 起）
+    - `return_Nh` → (N*12, '5m')：5m bar 标签（真实小时级，数据自 2025-01-02 起，已历史回补）
     - `return_Nm` → (ceil(N/5), '5m')：5m bar 标签（真实分钟级）
     标签归属日 = 样本 bar 的北京交易日，与日频特征对齐。
     """
@@ -105,25 +108,43 @@ def fetch_features(
     start: str | None,
     end: str | None,
     symbols: list[str] | None = None,
+    page_size: int = 10_000,
 ) -> pd.DataFrame:
     """拉取因子长表：columns=[symbol, dt, factor_id, value]。
 
     仅取 value_num（scalar/rank 因子）。缺失的 (factor, symbol, date) 在 pivot 时留 NaN。
-    """
-    client = get_supabase_client()
-    filt: dict[str, str] = {}
-    if factor_ids:
-        filt["factor_id"] = "in.(" + ",".join(factor_ids) + ")"
-    if symbols:
-        filt["symbol"] = "in.(" + ",".join(symbols) + ")"
-    filt.update(_date_range_clause(start, end, "date"))
 
-    rows = client.select_all(
-        "feature_values",
-        columns="factor_id,symbol,date,value_num,value_bool",
-        filters=filt,
-    )
-    df = pd.DataFrame(rows)
+    性能：特征多 × 股票多 × 区间长时行数爆炸（如 229 因子 × 196 股 × 1 年
+    ≈ 1100 万行），单查询 + 默认 1000/页要上万次往返，会撞 celery 55 分钟
+    软超时（train_3510f583ce9f 事故）。按 50 因子/块 + 1 万行/页拉取。
+    """
+    client = get_pg_client()
+    frames: list[pd.DataFrame] = []
+    chunks = [factor_ids[i : i + 50] for i in range(0, len(factor_ids), 50)] or [[]]
+    for ci, chunk in enumerate(chunks):
+        filt: dict[str, str] = {}
+        if chunk:
+            filt["factor_id"] = "in.(" + ",".join(chunk) + ")"
+        if symbols:
+            filt["symbol"] = "in.(" + ",".join(symbols) + ")"
+        filt.update(_date_range_clause(start, end, "date"))
+        rows = client.select_all(
+            "feature_values",
+            columns="factor_id,symbol,date,value_num,value_bool",
+            filters=filt,
+            page_size=page_size,
+        )
+        logger.info(
+            "fetch_features.chunk",
+            chunk=f"{ci + 1}/{len(chunks)}",
+            factors=len(chunk),
+            rows=len(rows),
+        )
+        if rows:
+            frames.append(pd.DataFrame(rows))
+    if not frames:
+        return pd.DataFrame()
+    df = pd.concat(frames, ignore_index=True)
     if df.empty:
         return df
     df["date"] = pd.to_datetime(df["date"]).dt.date
@@ -300,7 +321,7 @@ def fetch_forward_returns(
     - '1d'：日频标签（return_Nd），查询窗口向后延展 horizon 个日历日（+7 天缓冲）
     - '5m'：5m bar 标签（return_Nh/Nm），horizon 单位为 5m bar 数；
       样本点取「每日最后一根 bar」（收盘时点），标签归属日=该 bar 的北京交易日，
-      与日频特征对齐；5m 数据自 2026-02-02 起，更早的样本天然无标签（被丢弃）。
+      与日频特征对齐；5m 数据自 2025-01-02 起（已历史回补），更早的样本天然无标签（被丢弃）。
     """
     from datetime import datetime, timedelta
 
@@ -315,7 +336,7 @@ def fetch_forward_returns(
         ).strftime("%Y-%m-%d")
     else:
         end_dt = (datetime.strptime(end, "%Y-%m-%d") + timedelta(days=horizon + 7)).strftime("%Y-%m-%d")
-    client = get_supabase_client()
+    client = get_pg_client()
     filt: dict[str, str] = {"timeframe": f"eq.{timeframe}"}
     if symbols:
         filt["symbol"] = "in.(" + ",".join(symbols) + ")"
@@ -420,7 +441,7 @@ def _forward_returns_5m(
 # ──────────────────────────────────────────
 def _bounded_symbols(limit: int = 200) -> list[str]:
     """symbols 未指定时，取一个有界股票池，避免对 feature_values 全表扫描。"""
-    client = get_supabase_client()
+    client = get_pg_client()
     rows = client.select("feature_values", columns="symbol", limit=limit * 4)
     seen: list[str] = []
     for r in rows:
@@ -456,7 +477,7 @@ def _resolve_group_col(group_by: str) -> str:
 def fetch_group_map(symbols: list[str], group_by: str = "industry") -> dict[str, str]:
     """取 code → 分组键（同板块/同行业/同市场）映射，用于横截面特征分组。"""
     col = _resolve_group_col(group_by)
-    client = get_supabase_client()
+    client = get_pg_client()
     rows = client.select(
         "symbols",
         columns=f"code,{col}",
@@ -473,7 +494,7 @@ def fetch_peer_symbols(target_symbol: str, group_by: str = "industry") -> list[s
     若目标无分组信息，则退化为仅 [target_symbol]。
     """
     col = _resolve_group_col(group_by)
-    client = get_supabase_client()
+    client = get_pg_client()
     tgt = client.select(
         "symbols", columns=f"code,{col}",
         filters={"code": f"eq.{target_symbol}"}, limit=1,
@@ -495,7 +516,6 @@ def add_peer_features(
     group_map: dict[str, str],
     group_by: str = "industry",
     modes: list[str] | None = None,
-    labels: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, list[str]]:
     """在因子宽表上追加「同板块横截面特征」。
 
@@ -506,13 +526,28 @@ def add_peer_features(
     - "rank"          : 该股票因子值在组内同日的百分位排名 (0~1, 1=最高)
     - "relative"      : (自身值 - 组内均值) / 组内标准差（Z-score，相对强弱）
     - "sector_mean"   : 组内均值（所有同业相同，刻画板块整体水位）
-    - "sector_return" : 组内前向收益均值（板块未来涨跌，需传入 labels）
 
-    说明：这些特征让模型「知道」当前股票在其板块里的位置/关系，
-    即用户要求的「同板块排名 / 关系」类特征；当只保留目标股票行、
-    但保留这些同业聚合特征时，等价于「多种股票输入，预测其中一只」。
+    说明：这些特征全部基于「当前已知因子值」计算，让模型「知道」当前股票
+    在其板块里的位置/关系；当只保留目标股票行、但保留这些同业聚合特征时，
+    等价于「多种股票输入，预测其中一只」。
+
+    注意：历史上曾存在 "sector_return" 模式（板块未来收益均值），但该特征
+    由前向标签聚合得到，属于未来函数 / 标签泄漏，已移除，请勿再加回。
     """
     modes = modes or ["rank", "relative", "sector_mean"]
+
+    # 硬拦截：只允许基于「当前已知因子值」的模式。任何依赖未来/标签数据的
+    # 模式（如已移除的 "sector_return"）都是未来函数，禁止作为特征进入训练。
+    # 这是对「线上拿不到的数据不得出现在训练特征中」红线的编译期保障。
+    _ALLOWED = {"rank", "relative", "sector_mean"}
+    bad = [m for m in modes if m not in _ALLOWED]
+    if bad:
+        raise ValueError(
+            f"不支持的 peer 特征模式 {bad}。只允许基于当前已知因子值的模式 "
+            f"{sorted(_ALLOWED)}；依赖未来/标签数据的模式（如 'sector_return'）"
+            f"属未来函数，禁止作为特征。"
+        )
+
     df = wide.copy()
     df["_grp"] = df["symbol"].map(lambda s: group_map.get(s, "_unknown_"))
 
@@ -536,20 +571,53 @@ def add_peer_features(
             df[name] = df.groupby(["_grp", "dt"])[c].transform("mean")
             new_cols.append(name)
 
-    if "sector_return" in modes and labels is not None and not labels.empty:
-        lab = labels.rename(columns={"label": "_lab"})[["symbol", "dt", "_lab"]]
-        tmp = df[["symbol", "dt", "_grp"]].merge(lab, on=["symbol", "dt"], how="left")
-        grp_mean = (
-            tmp.groupby(["_grp", "dt"])["_lab"]
-            .mean()
-            .reset_index()
-            .rename(columns={"_lab": "sector_fwd_return"})
-        )
-        df = df.merge(grp_mean, on=["_grp", "dt"], how="left")
-        new_cols.append("sector_fwd_return")
-
     df = df.drop(columns=["_grp"])
     return df, new_cols
+
+
+def fetch_factor_categories(factor_ids: list[str]) -> dict[str, str]:
+    """因子 id → category（用于 B 模式限定 K线 / technical 因子）。"""
+    if not factor_ids:
+        return {}
+    client = get_pg_client()
+    rows = client.select(
+        "factor_definitions", columns="id,category",
+        filters={"id": f"in.({','.join(factor_ids)})"}, limit=len(factor_ids) + 50,
+    )
+    return {r["id"]: (r.get("category") or "custom") for r in rows}
+
+
+def add_pool_feature_block(
+    wide: pd.DataFrame,
+    factor_ids: list[str],
+    stats: list[str] | None = None,
+    kline_only: bool = False,
+) -> tuple[pd.DataFrame, list[str]]:
+    """B 模式：把股票池当作特征输入——对池中全部股票的因子按交易日做「跨池横截面统计」，
+    生成与池大小无关的有界特征块（pool__{factor}__{stat}），广播到目标股当日行。
+
+    设计取舍（避免维度爆炸 & 模型不可移植）：
+    - 不直接把每只股票的特征拼成 N×F 列（维度随池线性膨胀，~240 样本扛不住）；
+    - 改为对池中全部股票按交易日聚合 mean/std/min/max/median（确定性变换），
+      维度 = 因子数 × 统计数，与池大小无关，且预测时可从同一批 feature_values 复现，
+      不需持久化任何 transformer；
+    - kline_only=True：仅用 technical 类因子（价格/成交量派生），避开基本面因子的
+      低频/缺失噪声，更贴合「同业 K线 联动」直觉。
+    """
+    if stats is None:
+        stats = ["mean", "std", "min", "max", "median"]
+    cols = [c for c in factor_ids if c in wide.columns]
+    if kline_only:
+        cats = fetch_factor_categories(factor_ids)
+        cols = [c for c in cols if cats.get(c) == "technical"]
+    if not cols:
+        return wide, []
+    stat_tbl = wide.groupby("dt")[cols].agg(stats)
+    stat_tbl.columns = [f"pool__{c}__{st}" for c, st in stat_tbl.columns]
+    stat_tbl = stat_tbl.reset_index()
+    out = wide.merge(stat_tbl, on="dt", how="left")
+    new_cols = [c for c in stat_tbl.columns if c != "dt"]
+    return out, new_cols
 
 
 def build_dataset(
@@ -561,6 +629,9 @@ def build_dataset(
     label_spec: dict[str, Any] | None = None,
     target_symbol: str | None = None,
     peer: dict[str, Any] | None = None,
+    feature_page_size: int = 10_000,
+    test_start: str | None = None,
+    test_end: str | None = None,
 ) -> tuple[pd.DataFrame, list[str]]:
     """组装训练数据集。
 
@@ -573,7 +644,7 @@ def build_dataset(
        额外计算该股票在「同行业/同市场」同业中的排名/相对强弱/板块均值等特征，
        让模型感知「当前股票在同板块不同股票中的排名或关系」。
        分组维度由 peer.group_by 决定（industry / industry_level2 / market），
-       特征类型由 peer.modes 选择（rank / relative / sector_mean / sector_return）。
+       特征类型由 peer.modes 选择（rank / relative / sector_mean）。
     2) 多股票输入预测单只（target_symbol）：指定 target_symbol 时，universe 取
        「目标 + 同板块同业」（或由 peer.peer_symbols 显式指定），标签只保留目标股票，
        但特征里包含同业聚合特征，等价于「用一篮子同业作为上下文，预测其中一只的涨跌」。
@@ -583,11 +654,18 @@ def build_dataset(
     peer_enabled = bool(peer.get("enabled", False))
     group_by = peer.get("group_by", "industry")
     peer_modes = peer.get("modes") or ["rank", "relative", "sector_mean"]
+    # 池用途开关：
+    #  - "reference"（A，默认）：池作横截面参照系，算目标股在池中的 rank/rel/mean
+    #  - "features"（B）：池作特征输入，算跨池横截面统计块（有界维度，见 add_pool_feature_block）
+    pool_mode = (peer.get("pool_mode") or "reference") if peer_enabled else "reference"
+    pool_kline_only = bool(peer.get("pool_kline_only", False))
 
     # ── 1. 决定股票池 universe ──
     if target_symbol:
-        # 预测单只：上下文 = 目标 + 同业（或由 peer_symbols 显式指定）
-        explicit_peers = peer.get("peer_symbols")
+        # 预测单只：上下文 = 目标 + 同业。
+        # 优先级：peer.peer_symbols > 前端「股票池」框(config.symbols) > 按 group_by 自动取同行业
+        # （修复：此前 config.symbols 在 target 模式下被忽略，手填池不生效）
+        explicit_peers = peer.get("peer_symbols") or (list(symbols) if symbols else None)
         if explicit_peers:
             universe = list(dict.fromkeys([target_symbol] + list(explicit_peers)))
         else:
@@ -595,7 +673,8 @@ def build_dataset(
         symbols_used = universe
         logger.info(
             "build_dataset.target_symbol",
-            target=target_symbol, group_by=group_by, universe_size=len(universe),
+            target=target_symbol, group_by=group_by, pool_mode=pool_mode,
+            universe_size=len(universe),
         )
     else:
         if not symbols:
@@ -610,16 +689,24 @@ def build_dataset(
     horizon, label_tf = parse_horizon_tf(target)
     start = train_start or "2018-01-01"
     end = train_end or "2023-12-31"
+    # 测试集（用户预留、不参与训练/调参，仅最终评估）：把因子值与标签的抓取上沿
+    # 扩展到 test_end，使测试样本的特征与（可计算部分的）标签可用。test_end 不晚于
+    # train_end 时不扩展。
+    fetch_end = end
+    if test_end and (train_end is None or test_end > train_end):
+        fetch_end = test_end
     logger.info(
         "build_dataset.label",
         spec=label_spec_description(label_spec),
         label_timeframe=label_tf,
         horizon=horizon,
+        test_start=test_start,
+        test_end=test_end,
     )
 
-    feat = fetch_features(factor_ids, start, end, symbols_used)
+    feat = fetch_features(factor_ids, start, fetch_end, symbols_used, page_size=feature_page_size)
     labels = fetch_forward_returns(
-        start, end, horizon, symbols_used, label_spec=label_spec, timeframe=label_tf
+        start, fetch_end, horizon, symbols_used, label_spec=label_spec, timeframe=label_tf
     )
 
     if feat.empty:
@@ -632,16 +719,27 @@ def build_dataset(
     wide = feat.pivot_table(index=["symbol", "dt"], columns="factor_id", values="value")
     wide = wide.reset_index()
 
-    # ── 2. 同板块横截面特征 ──
+    # ── 2. 同板块横截面特征 / 池特征输入 ──
     if peer_enabled:
-        group_map = fetch_group_map(symbols_used, group_by)
-        wide, _peer_cols = add_peer_features(
-            wide, group_map, group_by=group_by, modes=peer_modes, labels=labels
-        )
-        logger.info(
-            "build_dataset.peer_features",
-            group_by=group_by, modes=peer_modes, added=len(_peer_cols),
-        )
+        if pool_mode == "features":
+            # B：池作为特征输入 —— 跨池横截面统计块（维度与池大小无关）
+            wide, _peer_cols = add_pool_feature_block(
+                wide, factor_ids, kline_only=pool_kline_only
+            )
+            logger.info(
+                "build_dataset.pool_features",
+                kline_only=pool_kline_only, added=len(_peer_cols),
+            )
+        else:
+            # A：池作为横截面参照系 —— 目标股在池中的 rank/rel/mean
+            group_map = fetch_group_map(symbols_used, group_by)
+            wide, _peer_cols = add_peer_features(
+                wide, group_map, group_by=group_by, modes=peer_modes
+            )
+            logger.info(
+                "build_dataset.peer_features",
+                group_by=group_by, modes=peer_modes, added=len(_peer_cols),
+            )
 
     merged = wide.merge(labels, on=["symbol", "dt"], how="inner").dropna(subset=["label"])
 
@@ -719,11 +817,15 @@ def _select_by_importance(
         "verbose": -1,
     }
     ds = lgb.Dataset(X, y)
+    # 注意：不能挂 early_stopping——这里没有 valid 集，LightGBM 4.x 会直接抛
+    # "For early stopping, at least one dataset and eval metric is required"
+    # （train_57d54f87ee66 事故；特征数 ≤ max_features 时提前 return 所以以前没踩到）。
+    # 重要性排序只需轻量固定轮数。
     booster = lgb.train(
         base,
         ds,
         num_boost_round=100,
-        callbacks=[lgb.early_stopping(20, verbose=False), lgb.log_evaluation(0)],
+        callbacks=[lgb.log_evaluation(0)],
     )
     imp = booster.feature_importance(importance_type="gain")
     order = [c for _, c in sorted(zip(imp, feature_cols), key=lambda kv: kv[0], reverse=True)]
@@ -735,17 +837,34 @@ def split_train_valid(
     valid_ratio: float = 0.2,
     split_method: str = "time",
     seed: int = 42,
+    embargo_days: int = 0,
+    train_end: str | None = None,
 ) -> tuple["np.ndarray", "np.ndarray"]:
     """计算训练/验证切分的位置索引 (train_idx, valid_idx)。
 
     - "time"（默认）：按 dt 升序切分，验证集 = 最近 valid_ratio 比例的「交易日」，
       训练集 = 其余较早交易日。验证集在时间上严格晚于训练集，杜绝未来函数。
     - "random"：随机切分（仅用于对照实验，不推荐实际训练）。
+    - embargo_days：隔离带（= 前向标签周期 H）。cutoff 前 H 个交易日的训练样本，
+      其前向标签会延伸进验证窗口（边界泄漏），丢弃不用。
 
     若数据仅含单日（无法时间切分），自动退化为 random 并告警。
     """
     if split_method == "time":
-        uniq_dates = data["dt"].drop_duplicates().sort_values()
+        dt = data["dt"]
+        if train_end:
+            # 归一化为与 dt 同类型，避免 python date 对象与字符串直接比较抛 TypeError
+            te = (
+                pd.Timestamp(train_end)
+                if pd.api.types.is_datetime64_any_dtype(dt)
+                else pd.Timestamp(train_end).date()
+            )
+            # 仅以 [.., train_end] 区间内的日期作为切分基准，排除预留测试集（dt>train_end），
+            # 否则训练/验证切分会把测试样本也分进来。
+            uniq_dates = dt[dt <= te].drop_duplicates().sort_values()
+        else:
+            te = None
+            uniq_dates = dt.drop_duplicates().sort_values()
         n_dates = len(uniq_dates)
         if n_dates <= 1:
             logger.warning("train.split.time_fallback_random", n_dates=n_dates)
@@ -754,14 +873,125 @@ def split_train_valid(
             cut_idx = int(n_dates * (1.0 - valid_ratio))
             cut_idx = max(1, min(n_dates - 1, cut_idx))  # 保证训练/验证都至少 1 天
             cut_date = uniq_dates.iloc[cut_idx]
-            is_valid = (data["dt"] > cut_date).values
-            return np.where(~is_valid)[0], np.where(is_valid)[0]
+            if embargo_days > 0:
+                # 隔离带：训练样本截止日再往前推 H 个交易日，
+                # 保证所有训练标签的窗口都不触碰验证期
+                emb_idx = max(1, cut_idx - embargo_days)
+                train_end_date = uniq_dates.iloc[emb_idx - 1]
+            else:
+                train_end_date = cut_date
+            upper = te if te is not None else dt.max()
+            is_train = ((dt <= train_end_date) & (dt <= upper)).values
+            is_valid = ((dt > cut_date) & (dt <= upper)).values
+            return np.where(is_train)[0], np.where(is_valid)[0]
 
     # random 分支
     rng = np.random.default_rng(seed)
     idx = rng.permutation(len(data))
     n_valid = int(len(idx) * valid_ratio)
     return idx[n_valid:], idx[:n_valid]
+
+
+# 自动调参网格（围绕正则强度：叶子数 / 最小子样本 / 特征采样 / L2）
+_TUNE_GRID: list[dict[str, Any]] = [
+    {"num_leaves": 7, "min_child_samples": 200, "feature_fraction": 0.6, "lambda_l2": 10.0},
+    {"num_leaves": 15, "min_child_samples": 100, "feature_fraction": 0.8, "lambda_l2": 1.0},
+    {"num_leaves": 15, "min_child_samples": 200, "feature_fraction": 0.7, "lambda_l2": 5.0},
+    {"num_leaves": 15, "min_child_samples": 400, "feature_fraction": 0.7, "lambda_l2": 10.0},
+    {"num_leaves": 31, "min_child_samples": 100, "feature_fraction": 0.9, "lambda_l2": 0.0},
+    {"num_leaves": 31, "min_child_samples": 200, "feature_fraction": 0.8, "lambda_l2": 5.0},
+    {"num_leaves": 31, "min_child_samples": 400, "feature_fraction": 0.7, "lambda_l2": 10.0},
+    {"num_leaves": 63, "min_child_samples": 200, "feature_fraction": 0.8, "lambda_l2": 1.0},
+]
+
+
+# 自动调参可选目标指标（均在验证集上计算；logloss 越低越好，其余越高越好）
+# - auc：ROC-AUC，排序能力（默认）。验证集正样本很少时噪声大。
+# - pr_auc：平均精确率（PR 曲线下面积），类不平衡下比 ROC-AUC 更敏感、更稳。
+# - logloss：概率校准质量，对「预测概率整体漂移」敏感，全样本参与、噪声最小。
+# - f1：先用训练集 Youden J 选阈值，再算验证集 F1，直接对齐「阈值化后能否开单」。
+TUNE_METRICS = ("auc", "pr_auc", "logloss", "f1")
+
+
+def _tune_on_valid(
+    X_train: "np.ndarray",
+    y_train: "np.ndarray",
+    X_valid: "np.ndarray",
+    y_valid: "np.ndarray",
+    base_params: dict[str, Any],
+    *,
+    num_boost_round: int = 150,
+    seed: int = 42,
+    metric: str = "auc",
+) -> tuple[dict[str, Any], float, list[dict[str, Any]]]:
+    """用训练窗口内切出的验证集直接调参，返回 (best_params, best_score, top3 候选榜)。
+
+    每个候选：在 train 上训练、在 valid（train_lightgbm 已排除测试集）上按 `metric`
+    打分取最优（见 TUNE_METRICS）。符合「用验证集调参、不用测试集调参」的协议；
+    验证集不参与最终模型训练（保留为干净评估集），故又能与测试集效果对比。
+    """
+    if metric not in TUNE_METRICS:
+        metric = "auc"
+    higher_better = metric != "logloss"
+
+    def _score(booster: "lgb.Booster") -> float:
+        # 验证集单类别：AUC/PR-AUC/F1 无意义，logloss 也失真 → 记最差分
+        if len(np.unique(y_valid)) < 2:
+            return 99.0 if metric == "logloss" else 0.0
+        pred = booster.predict(X_valid)
+        if metric == "pr_auc":
+            return float(average_precision_score(y_valid, pred))
+        if metric == "logloss":
+            return float(log_loss(y_valid, np.clip(pred, 1e-7, 1 - 1e-7), labels=[0, 1]))
+        if metric == "f1":
+            thr = _best_cls_threshold(y_train, booster.predict(X_train))
+            return float(f1_score(y_valid, (pred >= thr).astype(int), zero_division=0))
+        return float(roc_auc_score(y_valid, pred))
+    n = len(X_train)
+    # min_child_samples 按训练集规模收缩：小样本下 200/400 的叶子约束会让树无法分裂，
+    # 模型退化为单叶常数（AUC=0.5、重要度全 0 的事故）
+    mcs_cap = max(20, int(n * 0.4) // 10)
+    grid: list[dict[str, Any]] = []
+    seen: set[tuple] = set()
+    for cand in _TUNE_GRID:
+        c = {**cand, "min_child_samples": min(cand["min_child_samples"], mcs_cap)}
+        key = tuple(sorted(c.items()))
+        if key not in seen:
+            seen.add(key)
+            grid.append(c)
+    leaderboard: list[dict[str, Any]] = []
+    for cand in grid:
+        booster = lgb.train(
+            {**base_params, **cand},
+            lgb.Dataset(X_train, y_train),
+            num_boost_round=num_boost_round,
+            callbacks=[lgb.log_evaluation(0)],
+        )
+        leaderboard.append({**cand, "score": round(_score(booster), 4), "metric": metric})
+    leaderboard.sort(key=lambda r: r["score"], reverse=higher_better)
+    if not leaderboard:
+        return {}, 0.0, []
+    best = {k: v for k, v in leaderboard[0].items() if k not in ("score", "metric")}
+    return best, float(leaderboard[0]["score"]), leaderboard[:3]
+
+
+def _best_cls_threshold(y_true: "np.ndarray", y_score: "np.ndarray") -> float:
+    """Youden's J（max TPR−FPR）在「训练集」上选二分类阈值。
+
+    不平衡数据（正类 ~20%）下固定 0.5 阈值常导致零正类预测；
+    自适应阈值让混淆矩阵/精确率/召回率/F1 有实际意义。
+    只用训练集选阈值（不用验证集），避免阈值层面的信息泄漏。
+    """
+    try:
+        fpr, tpr, thrs = roc_curve(y_true, y_score)
+        j = tpr - fpr
+        thr = float(thrs[int(np.argmax(j))])
+        if not np.isfinite(thr):  # roc_curve 首点阈值为 inf
+            return 0.5
+        # 钳制到合理区间，避免退化阈值（全判正/全判负）
+        return round(min(max(thr, 0.05), 0.95), 4)
+    except Exception:  # noqa: BLE001 - 任何异常回退默认阈值
+        return 0.5
 
 
 def train_lightgbm(
@@ -785,9 +1015,12 @@ def train_lightgbm(
                 metrics_table(训练/验证评估指标表) }
     """
     params = params or {}
-    data = df.dropna(subset=feature_cols).copy()
+    # LightGBM 原生支持 NaN（分裂时自动学默认方向），不按「任一特征缺失」整行丢——
+    # 多特征交集会把样本饿死（70 特征 1 年仅剩 ~1700 样本、模型退化 AUC=0.5 的事故）。
+    # 仅丢「全部特征都缺失」的行（build_dataset 已做 how="all"，此处兜底）。
+    data = df.dropna(subset=feature_cols, how="all").copy()
     if data.empty:
-        raise ValueError("丢弃 NaN 后无可用样本（因子覆盖太低）")
+        raise ValueError("无可用样本（因子覆盖太低）")
 
     # ── 特征选择 ──
     selection = params.get("selection") or {}
@@ -835,15 +1068,40 @@ def train_lightgbm(
     # 验证用最近时段，二者在时间上严格不重叠（验证集完全晚于训练集）。
     # valid_ratio 语义变为「最近 time 比例」作为验证集（如 0.2 = 最近 20% 交易日）。
     split_method = params.get("split_method", "time")
+    # 隔离带 = 前向标签周期（tasks 按 target 算出）：cutoff 前 H 个交易日的
+    # 训练标签会延伸进验证窗口（边界泄漏），丢弃不用
+    embargo_days = int(params.get("embargo_days", 0) or 0)
     train_idx, valid_idx = split_train_valid(
-        data, valid_ratio=valid_ratio, split_method=split_method, seed=seed
+        data,
+        valid_ratio=valid_ratio,
+        split_method=split_method,
+        seed=seed,
+        embargo_days=embargo_days,
+        # 仅以 [.., train_end] 内的日期做训练/验证切分，排除预留测试集（dt>train_end）
+        train_end=params.get("train_end"),
     )
+    # 预留测试集：dt 落在 [test_start, test_end] 的样本，参与最终评估但不参与训练/调参。
+    test_start = params.get("test_start")
+    test_end = params.get("test_end")
+    if test_start and test_end:
+        # 归一化为与 data["dt"] 同类型，避免 date 对象与字符串比较抛 TypeError
+        if pd.api.types.is_datetime64_any_dtype(data["dt"]):
+            ts, te = pd.Timestamp(test_start), pd.Timestamp(test_end)
+        else:
+            ts, te = pd.Timestamp(test_start).date(), pd.Timestamp(test_end).date()
+        test_mask = (data["dt"] >= ts) & (data["dt"] <= te)
+        test_idx = np.where(test_mask.values)[0]
+    else:
+        test_idx = np.array([], dtype=int)
     if split_method == "time":
         logger.info(
             "train.split.time",
-            n_train=len(train_idx), n_valid=len(valid_idx),
+            n_train=len(train_idx), n_valid=len(valid_idx), embargo_days=embargo_days,
         )
 
+    # min_child_samples 随训练样本量收缩：固定 100 在小样本（数百行）下
+    # 同样无法分裂（与调参网格同一坑）
+    _mcs_default = min(100, max(20, len(train_idx) // 10))
     default_params = {
         "objective": "binary",
         "metric": "auc",
@@ -853,20 +1111,65 @@ def train_lightgbm(
         "feature_fraction": 0.9,
         "bagging_fraction": 0.8,
         "bagging_freq": 1,
-        "min_child_samples": 100,
+        "min_child_samples": _mcs_default,
+        # 类别不平衡（正类常仅 ~20%）：放大正类权重，避免预测概率被压到
+        # 0.5 以下导致「零正类预测」（精确率/召回率/F1 全 0 的假象）
+        "scale_pos_weight": (neg / pos) if pos > 0 else 1.0,
         "n_jobs": -1,
         "seed": seed,
         "verbose": -1,
     }
     # 仅把「LightGBM 原生参数」透传给引擎；selection / num_boost_round 等
     # 是训练管线的控制项，不能塞进 LightGBM params（否则报 Unknown parameter）。
-    _control_keys = {"selection", "num_boost_round", "label"}
+    _control_keys = {
+        "selection", "num_boost_round", "label", "tune", "tune_metric",
+        "embargo_days", "split_method", "train_end", "test_start", "test_end",
+        "refit_on_valid",
+    }
     lgbm_params = {k: v for k, v in params.items() if k not in _control_keys}
     default_params.update(lgbm_params)
 
     num_boost_round = int(params.get("num_boost_round", 200))
 
-    train_set = lgb.Dataset(X[train_idx], y[train_idx])
+    # ── 自动调参（可选）：用 carved 验证集直接网格搜索正则强度（防测试集泄漏）──
+    tuned_params: dict[str, Any] | None = None
+    cv_auc: float | None = None
+    cv_top: list[dict[str, Any]] = []
+    tune_metric = str(params.get("tune_metric") or "auc").lower()
+    if tune_metric not in TUNE_METRICS:
+        tune_metric = "auc"
+    if params.get("tune"):
+        logger.info("train.tune.start", candidates=len(_TUNE_GRID), metric=tune_metric)
+        best, cv_auc, cv_top = _tune_on_valid(
+            X[train_idx],
+            y[train_idx],
+            X[valid_idx],
+            y[valid_idx],
+            default_params,
+            num_boost_round=min(num_boost_round, 150),
+            seed=seed,
+            metric=tune_metric,
+        )
+        if best:
+            tuned_params = best
+            default_params.update(best)
+        logger.info("train.tune.done", best=best, cv_score=cv_auc, metric=tune_metric)
+
+    # ── 最终模型训练集：是否并入验证集全量训练（refit_on_valid 开关）──
+    # 默认 false：最终模型只在 train 上训练，验证集保留为干净评估（损失约 20% 数据）。
+    # true：在 train+valid 上全量训练（用更多数据、更强拟合），但验证集变为样本内，
+    # 此时仅「预留测试集」能作为真实的泛化锚点（cv_auc 仍是调参阶段的验证集 AUC）。
+    refit_on_valid = bool(params.get("refit_on_valid", False))
+    if refit_on_valid:
+        final_idx = np.concatenate([train_idx, valid_idx])
+        logger.info(
+            "train.refit_on_valid",
+            n_train=len(train_idx), n_valid=len(valid_idx), n_final=len(final_idx),
+        )
+    else:
+        final_idx = train_idx
+
+    train_set = lgb.Dataset(X[final_idx], y[final_idx])
     valid_set = lgb.Dataset(X[valid_idx], y[valid_idx], reference=train_set)
 
     booster = lgb.train(
@@ -879,20 +1182,42 @@ def train_lightgbm(
 
     train_pred = booster.predict(X[train_idx])
     valid_pred = booster.predict(X[valid_idx])
+    test_pred = booster.predict(X[test_idx]) if len(test_idx) else np.array([], dtype=float)
     train_auc = float(roc_auc_score(y[train_idx], train_pred))
     valid_auc = float(roc_auc_score(y[valid_idx], valid_pred))
+    test_auc = (
+        float(roc_auc_score(y[test_idx], test_pred))
+        if len(test_idx) and len(np.unique(y[test_idx])) > 1
+        else None
+    )
+
+    # 退化检测：双 AUC ≈ 0.5 → 模型没学到任何东西（单叶常数），必须显式标记
+    degenerate = bool(train_auc < 0.52 and valid_auc < 0.52)
+    if degenerate:
+        logger.warning(
+            "train.degenerate",
+            train_auc=round(train_auc, 4),
+            valid_auc=round(valid_auc, 4),
+            n_train=int(len(train_idx)),
+            n_features=len(feature_cols),
+            hint="样本过少/特征无区分度/标签阈值不合理",
+        )
 
     importance = booster.feature_importance(importance_type="gain")
     feat_imp = {c: float(v) for c, v in zip(feature_cols, importance)}
 
     # ──────────────────────────────────────────────────────────────
     # 评估指标表（train / valid 对比）：便于训练完成后直接「拿到结果」
-    # 含 AUC / 准确率 / 精确率 / 召回率 / F1 / 混淆矩阵，统一以 0.5 为分类阈值。
+    # 含 AUC / 准确率 / 精确率 / 召回率 / F1 / 混淆矩阵。
+    # 分类阈值：不平衡数据下固定 0.5 常导致零正类预测（概率被压在 0.5 以下），
+    # 改为「训练集 Youden J 自适应阈值」（不用验证集，避免阈值泄漏）。
     # 注意：若某切分只有单一类别（标签被阈值筛成一类），AUC 无定义 → 记 None。
     # ──────────────────────────────────────────────────────────────
-    def _split_metrics(y_true: "np.ndarray", y_pred: "np.ndarray") -> dict:
+    cls_threshold = _best_cls_threshold(y[train_idx], train_pred)
+
+    def _split_metrics(y_true: "np.ndarray", y_pred: "np.ndarray", thr: float) -> dict:
         y_true = y_true.astype(int)
-        y_hat = (y_pred >= 0.5).astype(int)
+        y_hat = (y_pred >= thr).astype(int)
         auc = None
         if len(np.unique(y_true)) > 1:
             auc = round(float(roc_auc_score(y_true, y_pred)), 4)
@@ -905,22 +1230,56 @@ def train_lightgbm(
             "f1": round(float(f1_score(y_true, y_hat, zero_division=0)), 4),
             "confusion": [[int(tn), int(fp)], [int(fn), int(tp)]],
             "n": int(len(y_true)),
+            # 正样本数与占比：诊断类不平衡 / 三段分布漂移
+            "pos": int(y_true.sum()),
+            "pos_ratio": round(float(y_true.mean()), 4) if len(y_true) else None,
+        }
+
+    # 训练/验证的实际时间范围（页面展示用；时间切分时 valid 严格晚于 train）
+    dt_vals = data["dt"].to_numpy()
+
+    def _date_range(idx: "np.ndarray") -> dict[str, str]:
+        d = dt_vals[idx]
+        return {
+            "start": str(pd.Timestamp(d.min()).date()),
+            "end": str(pd.Timestamp(d.max()).date()),
         }
 
     metrics_table = {
-        "train": _split_metrics(y[train_idx], train_pred),
-        "valid": _split_metrics(y[valid_idx], valid_pred),
+        "train": _split_metrics(y[train_idx], train_pred, cls_threshold),
+        "valid": _split_metrics(y[valid_idx], valid_pred, cls_threshold),
+        "cls_threshold": cls_threshold,
+        "split_range": {"train": _date_range(train_idx), "valid": _date_range(valid_idx)},
+        # 自动调参结果（未开启时为 None）。cv_auc 字段名保留兼容旧数据，
+        # 实际含义是「cv_metric 指标下验证集最优得分」（logloss 越低越好）
+        "tuned_params": tuned_params,
+        "cv_auc": cv_auc,
+        "cv_metric": tune_metric if tuned_params is not None else None,
+        "cv_top": cv_top,
+        # 退化标记（双 AUC≈0.5，模型未学到有效信号）
+        "degenerate": degenerate,
+        # 最终模型训练模式：true=并入验证集全量训练（验证集为样本内）
+        "final_train_on_valid": refit_on_valid,
     }
+    # 测试集（用户预留、不参与训练/调参）：仅最终评估，用于与验证集对比泛化漂移
+    if len(test_idx):
+        metrics_table["test"] = _split_metrics(y[test_idx], test_pred, cls_threshold)
+        metrics_table["split_range"]["test"] = _date_range(test_idx)
 
     return {
         "booster": booster,
         "train_auc": round(train_auc, 4),
         "valid_auc": round(valid_auc, 4),
+        "test_auc": round(test_auc, 4) if test_auc is not None else None,
         "n_train": int(len(train_idx)),
         "n_valid": int(len(valid_idx)),
+        "n_final_train": int(len(final_idx)),
+        "final_train_on_valid": refit_on_valid,
+        "n_test": int(len(test_idx)),
         "feature_importance": feat_imp,
         "feature_cols": feature_cols,
         "metrics_table": metrics_table,
+        "cls_threshold": cls_threshold,
     }
 
 

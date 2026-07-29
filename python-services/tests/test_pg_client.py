@@ -1,4 +1,4 @@
-"""Supabase 客户端测试（验证之前踩的分页坑已修复）
+"""Postgres 客户端测试（验证之前踩的分页坑已修复）
 
 PostgREST 过滤器格式约定：
   filters = {"column": "operator.value"}
@@ -12,15 +12,15 @@ CI 默认不跑，本地或 secrets 配置后才跑。
 
 import pytest
 
-from common.supabase_client import get_supabase_client
+from common.pg_client import get_pg_client
 
 # 整个文件标记为 integration
 pytestmark = pytest.mark.integration
 
 
-def test_supabase_select_with_filters():
+def test_pg_select_with_filters():
     """单页查询"""
-    client = get_supabase_client()
+    client = get_pg_client()
     rows = client.select(
         "klines_all",
         columns="symbol,dt,close",
@@ -34,9 +34,9 @@ def test_supabase_select_with_filters():
         assert rows[0]["symbol"] == "600519"
 
 
-def test_supabase_count():
+def test_pg_count():
     """计数"""
-    client = get_supabase_client()
+    client = get_pg_client()
     count = client.count(
         "klines_all",
         filters={"symbol": "eq.600519", "timeframe": "eq.1d"},
@@ -45,13 +45,13 @@ def test_supabase_count():
     assert count > 0
 
 
-def test_supabase_select_all_pagination():
+def test_pg_select_all_pagination():
     """分页查询 — 这是之前踩坑的地方
 
     Supabase PostgREST 单次硬限制 1000 行。
     select_all 必须每页重建 query，才能拿到超过 1000 行的数据。
     """
-    client = get_supabase_client()
+    client = get_pg_client()
 
     # 目标：查 new_energy_2020 的 5m K 线（53136 条），明显超过 1000
     filters = {"scenario_id": "eq.new_energy_2020", "timeframe": "eq.5m"}
@@ -73,9 +73,9 @@ def test_supabase_select_all_pagination():
     )
 
 
-def test_supabase_select_all_with_no_data():
+def test_pg_select_all_with_no_data():
     """查询空结果"""
-    client = get_supabase_client()
+    client = get_pg_client()
     rows = client.select_all(
         "klines_all",
         filters={"symbol": "eq.NONEXISTENT_999"},

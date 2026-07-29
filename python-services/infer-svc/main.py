@@ -6,8 +6,10 @@
 from __future__ import annotations
 
 from common_utils import (
+    ErrorCode,
     InferenceRequest,
     Signal,
+    api_error,
     parse_and_validate_as_of,
 )
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -19,9 +21,9 @@ logger = get_logger("infer-svc")
 
 app = create_app(
     service_name="infer-svc",
-    version="0.1.0",
-    description="推理服务（MVP 用 mock 模型；Epic 3 接真实模型）",
-)
+        version="0.1.0",
+        description="推理服务（mock 模型 + 真实模型 build_dataset 复现路径）",
+    )
 
 
 @app.get("/", tags=["system"])
@@ -36,7 +38,7 @@ async def root() -> dict:
             "GET /api/v1/inference/models",
             "WS   /ws/v1/inference/stream (Epic 6 占位)",
         ],
-        "status": "Epic 2 骨架 · mock 模型；真实模型见 Epic 3 T-3.03",
+        "status": "mock 模型 + 真实模型（build_dataset 复现特征，point-in-time）",
         "known_mock_models": list(KNOWN_MOCK_MODELS.keys()),
     }
 
@@ -65,19 +67,28 @@ async def predict(req: InferenceRequest):
     # 1. 校验 as_of（防未来函数）
     parse_and_validate_as_of(req.as_of)
 
-    # 2. 逐股推理
-    overrides = req.feature_overrides or {}
-    signals = []
-    for sym in req.symbols:
-        sig = predict_one(
-            req.model_id,
-            sym,
-            req.as_of,
-            include_explanation=req.include_explanation,
-            feature_override=overrides.get(sym),
-        )
-        # pydantic 校验 + 规范化
-        signals.append(Signal(**sig).model_dump(exclude_none=False))
+    # 2. mock 模型走原路径；真实模型（非 mock_ 前缀）走 build_dataset 复现路径
+    is_mock = req.model_id.startswith("mock_") or req.model_id in KNOWN_MOCK_MODELS
+    if is_mock:
+        overrides = req.feature_overrides or {}
+        signals = []
+        for sym in req.symbols:
+            sig = predict_one(
+                req.model_id,
+                sym,
+                req.as_of,
+                include_explanation=req.include_explanation,
+                feature_override=overrides.get(sym),
+            )
+            # pydantic 校验 + 规范化
+            signals.append(Signal(**sig).model_dump(exclude_none=False))
+    else:
+        from real_predict import predict_real
+
+        try:
+            signals = predict_real(req)
+        except ValueError as exc:
+            raise api_error(ErrorCode.MODEL_NOT_FOUND, str(exc), status=400) from exc
 
     logger.info(
         "infer.predict",

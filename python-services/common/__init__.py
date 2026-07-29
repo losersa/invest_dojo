@@ -23,7 +23,7 @@ from common.redis_client import (
     get_redis,
     redis_health_check,
 )
-from common.supabase_client import PGClient, SupabaseClient, get_supabase_client
+from common.pg_client import PGClient, get_pg_client
 
 __all__ = [
     # config
@@ -31,10 +31,9 @@ __all__ = [
     # logging
     "get_logger",
     "setup_logging",
-    # supabase / pg
-    "SupabaseClient",
+    # pg
     "PGClient",
-    "get_supabase_client",
+    "get_pg_client",
     # redis
     "RedisKey",
     "RedisChannel",

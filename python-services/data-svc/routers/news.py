@@ -12,7 +12,7 @@ from common_utils import (
 from fastapi import APIRouter, Depends, Query
 
 from common import get_logger
-from common.supabase_client import get_supabase_client
+from common.pg_client import get_pg_client
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -58,7 +58,7 @@ async def list_news(
     elif len(time_clauses) > 1:
         filters["and"] = f"({','.join(time_clauses)})"
 
-    client = get_supabase_client()
+    client = get_pg_client()
     total = client.count("news", filters=filters)
 
     offset = (pg["page"] - 1) * pg["page_size"]

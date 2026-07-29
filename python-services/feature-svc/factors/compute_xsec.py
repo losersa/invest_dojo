@@ -29,7 +29,7 @@ from typing import Any
 
 import pandas as pd
 
-from common import get_logger, get_supabase_client
+from common import get_logger, get_pg_client
 
 logger = get_logger(__name__)
 
@@ -77,7 +77,7 @@ def _fetch_industry_map(client) -> dict[str, str]:
 
 def compute_xsec_factors(start: str, end: str, dry_run: bool = False) -> dict[str, Any]:
     """计算 [start, end]（YYYY-MM-DD，含端点）的横截面因子并写 feature_values。"""
-    client = get_supabase_client()
+    client = get_pg_client()
 
     df = _fetch_market_daily(client, start, end)
     if df.empty:

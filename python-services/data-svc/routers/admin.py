@@ -23,7 +23,7 @@ import psycopg2.errors
 from pydantic import BaseModel, Field
 
 from common import get_logger
-from common.supabase_client import get_supabase_client
+from common.pg_client import get_pg_client
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -234,7 +234,7 @@ async def data_overview(
     """并发查询所有数据表的行数与最近更新时间，总耗时≈最慢的单表查询。"""
     _require_admin(x_user_id, x_user_role)
 
-    client = get_supabase_client()
+    client = get_pg_client()
     loop = asyncio.get_running_loop()
     # 各表查询在线程池中并发执行（DB 调用为阻塞 IO），连接池 maxconn=10 足以支撑
     results = await asyncio.gather(*[
@@ -254,7 +254,7 @@ async def table_overview(
     tdef = next((t for t in _TABLE_DEFS if t["name"] == table_name), None)
     if not tdef:
         raise _param_error(f"Unknown table: {table_name}. Available: {[t['name'] for t in _TABLE_DEFS]}")
-    client = get_supabase_client()
+    client = get_pg_client()
     loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(None, _query_table_stats, client, tdef)
     return result
@@ -439,12 +439,14 @@ async def routine_runs(
     days: int = 14,
     start: str | None = None,
     end: str | None = None,
+    task_name: str | None = None,
     x_user_id: str | None = Header(None, alias="X-User-Id"),
     x_user_role: str | None = Header(None, alias="X-User-Role"),
 ):
     """celery 例行任务（5m K线/快照/因子/汇总）每天的成功/失败/跳过记录。
 
     - 默认近 `days` 天；同传 `start`/`end`（YYYY-MM-DD）则按自定义区间查询。
+    - `task_name` 按任务名过滤（任务卡片「日志」页签回放单任务历史运行用）。
     """
     _require_admin(x_user_id, x_user_role)
     if start and end:
@@ -453,12 +455,15 @@ async def routine_runs(
         days = min(max(days, 1), 90)
         since = (datetime.utcnow().date() - timedelta(days=days)).isoformat()
         filters = {"run_date": f"gte.{since}"}
-    client = get_supabase_client()
+    if task_name:
+        # 显式 eq. 前缀：任务名含 "."，裸值会被 filter 翻译器按首个点误拆成操作符
+        filters["task_name"] = f"eq.{task_name}"
+    client = get_pg_client()
     rows = client.select_all(
         "routine_task_runs",
         columns="task_name,run_date,status,detail,duration_sec,started_at,finished_at",
         filters=filters,
-        order="run_date.desc,task_name.asc",
+        order="run_date.desc,task_name.asc,finished_at.desc",
         page_size=1000,
     )
     return {"data": rows, "days": days}
@@ -484,7 +489,7 @@ async def routine_metrics(
         days = min(max(days, 1), 365)
         since = (datetime.utcnow().date() - timedelta(days=days)).isoformat()
         filters = {"date": f"gte.{since}"}
-    client = get_supabase_client()
+    client = get_pg_client()
     rows = client.select_all(
         "daily_data_metrics",
         columns="date,metric,rows_count,symbols_covered,collected_at",
@@ -566,7 +571,7 @@ async def routine_tasks(
     x_user_role: str | None = Header(None, alias="X-User-Role"),
 ):
     _require_admin(x_user_id, x_user_role)
-    client = get_supabase_client()
+    client = get_pg_client()
     # 每个任务最近一次运行记录
     latest: dict[str, dict] = {}
     try:

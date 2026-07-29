@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 from common import get_logger
-from common.supabase_client import get_supabase_client
+from common.pg_client import get_pg_client
 
 from .registry import FUNDAMENTAL_FIELD_MAP
 
@@ -334,7 +334,7 @@ def load_panel(
     dt_load = dt_start - timedelta(days=max(extra_days * 2, 0))
     load_start = dt_load.strftime("%Y-%m-%d")
 
-    client = get_supabase_client()
+    client = get_pg_client()
 
     # ── 1. K 线 ──
     df_k = _load_klines(client, symbols, load_start, end, scenario_id, timeframe)

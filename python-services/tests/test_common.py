@@ -7,7 +7,7 @@ from common import (
     RedisKey,
     create_app,
     get_logger,
-    get_supabase_client,
+    get_pg_client,
     settings,
 )
 
@@ -16,8 +16,8 @@ def test_settings_loaded():
     """配置能正常加载"""
     # env 的合法值集合（不硬编码 development，让 CI 可覆盖 test / staging 等）
     assert settings.env in {"development", "test", "staging", "production"}
-    # 本地 Kong 网关（迁移到 18080，规避 Windows WinNAT 7981-8480 保留段）
-    assert settings.supabase_url.startswith(("http://", "https://"))
+    # 直连 PostgreSQL（不依赖 Supabase / Kong）
+    assert settings.pg_host
     # 端口已迁移到 10001-10006（原 8001-8006 被 WinNAT 保留段占用）
     assert 10001 <= settings.feature_svc_port <= 10006
 
@@ -57,7 +57,7 @@ def test_create_app():
 
 
 @pytest.mark.integration
-def test_supabase_client_healthy():
+def test_pg_client_healthy():
     """Supabase 连接正常（需真实网络）"""
-    client = get_supabase_client()
+    client = get_pg_client()
     assert client.health_check() is True

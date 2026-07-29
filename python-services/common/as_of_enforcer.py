@@ -107,7 +107,7 @@ class DataClientProxy:
     """数据客户端的 as_of 强制注入代理（占位）
 
     TODO (T-6.04)：
-    - 包装 SupabaseClient 的所有查询方法
+    - 包装 PGClient 的所有查询方法
     - 自动在 filters 里加入 as_of 约束
     - 拦截绕过 as_of 的调用
     """

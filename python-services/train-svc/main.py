@@ -25,10 +25,11 @@ from common_utils import (
     new_job_id,
     utc_now_iso,
 )
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Header, Query
+from fastapi.responses import Response
 
-from common import create_app, get_logger, get_supabase_client, settings
-from common.minio_client import get_presigned_url
+from common import create_app, get_logger, get_pg_client, settings
+from common.minio_client import download_bytes, get_presigned_url
 
 logger = get_logger("train-svc")
 
@@ -62,28 +63,57 @@ async def root() -> dict:
 router = APIRouter(prefix="/api/v1/training", tags=["training"])
 
 
+def _resolve_user_id(x_user_id: str | None) -> str | None:
+    """从 X-User-Id 头解析有效用户主键（auth.users.id / profiles.id）。
+
+    非法值（anon/undefined/null/短串）视为匿名（None），避免污染 user_id 列。
+    """
+    if not x_user_id:
+        return None
+    if x_user_id in ("anon", "undefined", "null", ""):
+        return None
+    if len(x_user_id) < 32:  # UUID 长度 36，宽松下限 32
+        return None
+    return x_user_id
+
+
 @router.post("/jobs", summary="提交训练任务（异步）")
-async def create_training_job(payload: TrainJobCreate):
+async def create_training_job(
+    payload: TrainJobCreate,
+    x_user_id: str | None = Header(None, alias="X-User-Id"),
+):
     """提交训练任务。
 
     流程：
     1. 生成 job_id
-    2. 写 training_jobs（status=pending）
+    2. 写 training_jobs（status=pending，含 user_id / target_symbol）
     3. 推 Celery 队列（queue=train）
     4. 立即返回 job_id + Celery task_id
+
+    参数与结果的归属：user_id（用主键 id 关联 auth.users），config.owner 同步为该
+    用户，训练完成后 models.owner=该用户，实现「参数 + 结果」按用户 + 任务 id 保存。
     """
     job_id = new_job_id()
     model_id = payload.model_id  # 可空；Epic 3 完成训练后才写入 models 表
 
-    config_dict = payload.config.model_dump()
+    user_id = _resolve_user_id(x_user_id)
 
-    client = get_supabase_client()
+    # 登录用户：模型归属该用户（用主键 id）；匿名：保持 platform 归属
+    if user_id:
+        payload.config.owner = user_id
+
+    config_dict = payload.config.model_dump()
+    # target_symbol 提升为独立列（便于按目标分模块/过滤），空串归一为 NULL
+    target_symbol = (config_dict.get("target_symbol") or "").strip() or None
+
+    client = get_pg_client()
     client.insert(
         "training_jobs",
         {
             "job_id": job_id,
             "model_id": model_id,
-            "user_id": None,  # TODO: 从 JWT 获取（Epic 7）
+            "user_id": user_id,
+            "target_symbol": target_symbol,
             "status": STATUS_PENDING,
             "progress": 0,
             "stage": "queued",
@@ -122,6 +152,10 @@ async def create_training_job(payload: TrainJobCreate):
 async def list_training_jobs(
     status: str | None = Query(None, description="过滤状态"),
     user_id: str | None = Query(None),
+    target_symbol: str | None = Query(
+        None,
+        description="按预测目标股票过滤；传 '__none__' 只取全市场面板任务（target_symbol 为空）",
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
@@ -130,14 +164,18 @@ async def list_training_jobs(
         filters["status"] = f"eq.{status}"
     if user_id:
         filters["user_id"] = f"eq.{user_id}"
+    if target_symbol == "__none__":
+        filters["target_symbol"] = "is.null"
+    elif target_symbol:
+        filters["target_symbol"] = f"eq.{target_symbol}"
 
-    client = get_supabase_client()
+    client = get_pg_client()
     total = client.count("training_jobs", filters=filters)
 
     offset = (page - 1) * page_size
     rows = client.select(
         "training_jobs",
-        columns="job_id,model_id,user_id,status,progress,stage,config,"
+        columns="job_id,model_id,user_id,target_symbol,status,progress,stage,config,"
         "metrics_preview,error,started_at,completed_at,created_at",
         filters=filters,
         order="created_at.desc",
@@ -158,9 +196,58 @@ async def list_training_jobs(
     }
 
 
+@router.get("/targets", summary="按预测目标股票聚合训练任务（分模块用）")
+async def list_training_targets(
+    user_id: str | None = Query(None, description="按用户过滤（用主键 id）"),
+):
+    """按 target_symbol 聚合当前用户的训练任务，供训练首页「分模块」展示。
+
+    返回每个目标股票的：任务数、最近任务状态/时间/名称。
+    target_symbol 为空的任务归到 code=None（全市场面板）分组。
+    """
+    filters: dict[str, str] = {}
+    if user_id:
+        filters["user_id"] = f"eq.{user_id}"
+
+    client = get_pg_client()
+    rows = client.select(
+        "training_jobs",
+        columns="target_symbol,status,config,model_id,created_at",
+        filters=filters,
+        order="created_at.desc",
+    )
+
+    groups: dict[str, dict] = {}
+    for r in rows:
+        code = (r.get("target_symbol") or "").strip() or "__none__"
+        g = groups.get(code)
+        if g is None:
+            cfg = r.get("config") or {}
+            g = {
+                "target_symbol": None if code == "__none__" else code,
+                "job_count": 0,
+                "completed_count": 0,
+                # rows 已按 created_at desc，故首个命中即最近
+                "latest_status": r.get("status"),
+                "latest_created_at": r.get("created_at"),
+                "latest_target": cfg.get("target"),
+                "latest_algorithm": cfg.get("algorithm"),
+            }
+            groups[code] = g
+        g["job_count"] += 1
+        if r.get("status") == "completed":
+            g["completed_count"] += 1
+
+    # 排序：有目标的分组按最近任务时间倒序在前，全市场面板（None）排最后
+    named = [g for g in groups.values() if g["target_symbol"] is not None]
+    named.sort(key=lambda x: str(x["latest_created_at"] or ""), reverse=True)
+    panel = [g for g in groups.values() if g["target_symbol"] is None]
+    return {"data": named + panel}
+
+
 @router.get("/jobs/{job_id}", summary="查询训练任务详情")
 async def get_training_job(job_id: str):
-    client = get_supabase_client()
+    client = get_pg_client()
     rows = client.select(
         "training_jobs",
         filters={"job_id": f"eq.{job_id}"},
@@ -188,7 +275,7 @@ async def get_training_result(job_id: str):
     - metrics_table（训练/验证评估指标表：AUC/准确/精确/召回/F1/混淆矩阵）
     - label_spec / peer / split_method / target_symbol（训练配置回溯）
     """
-    client = get_supabase_client()
+    client = get_pg_client()
     jobs = client.select(
         "training_jobs",
         filters={"job_id": f"eq.{job_id}"},
@@ -279,7 +366,7 @@ async def download_model(model_id: str):
 
     前端「下载模型」按钮直接打开该 URL 即可拿到 .txt（LightGBM booster 字符串）。
     """
-    client = get_supabase_client()
+    client = get_pg_client()
     rows = client.select(
         "models",
         filters={"id": f"eq.{model_id}"},
@@ -316,6 +403,46 @@ async def download_model(model_id: str):
     }
 
 
+@router.get("/models/{model_id}/file", summary="模型文件下载（同源流式转发）")
+async def download_model_file(model_id: str):
+    """经 train-svc 流式转发 MinIO 模型文件，替代预签名 URL。
+
+    预签名 URL 指向 localhost:9000——远程浏览器里 localhost 是用户自己电脑，
+    必然 ERR_CONNECTION_REFUSED（手册 ## 0）。前端走 /svc/train 同源代理访问本端点。
+    """
+    client = get_pg_client()
+    rows = client.select(
+        "models",
+        filters={"id": f"eq.{model_id}"},
+        columns="id,name,file_path",
+        limit=1,
+    )
+    if not rows or not rows[0].get("file_path"):
+        raise api_error(
+            ErrorCode.JOB_NOT_FOUND,
+            f"Model file not found: {model_id}",
+            status=404,
+            model_id=model_id,
+        )
+    fp = rows[0]["file_path"]
+    try:
+        data = download_bytes(fp)
+    except Exception as e:  # noqa: BLE001
+        logger.error("train.download.read_failed", model_id=model_id, error=str(e))
+        raise api_error(
+            ErrorCode.INVALID_PARAM,
+            f"读取模型文件失败：{e}",
+            status=500,
+            model_id=model_id,
+        )
+    filename = fp.rsplit("/", 1)[-1] or f"{model_id}.txt"
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.delete("/jobs/{job_id}", summary="取消训练任务")
 async def cancel_training_job(job_id: str):
     """仅支持取消 pending / running 状态的任务。
@@ -323,7 +450,7 @@ async def cancel_training_job(job_id: str):
     注意：已经在 worker 里跑的任务，revoke(terminate=True) 会发 SIGTERM，
     任务看自己的中断点决定是否响应。MVP 只标状态不终止进程。
     """
-    client = get_supabase_client()
+    client = get_pg_client()
     rows = client.select(
         "training_jobs",
         filters={"job_id": f"eq.{job_id}"},

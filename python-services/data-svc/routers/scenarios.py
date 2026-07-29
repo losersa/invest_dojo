@@ -6,7 +6,7 @@ from common_utils import ErrorCode, api_error
 from fastapi import APIRouter, Query
 
 from common import get_logger
-from common.supabase_client import get_supabase_client
+from common.pg_client import get_pg_client
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -23,7 +23,7 @@ async def list_scenarios(
     if difficulty:
         filters["difficulty"] = f"eq.{difficulty}"
 
-    client = get_supabase_client()
+    client = get_pg_client()
     rows = client.select(
         "scenarios",
         columns="id,name,description,category,difficulty,date_start,date_end,"
@@ -36,7 +36,7 @@ async def list_scenarios(
 
 @router.get("/scenarios/{scenario_id}", summary="场景详情")
 async def get_scenario(scenario_id: str):
-    client = get_supabase_client()
+    client = get_pg_client()
     rows = client.select(
         "scenarios",
         filters={"id": f"eq.{scenario_id}"},

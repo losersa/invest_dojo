@@ -30,7 +30,7 @@ from fastapi import APIRouter, BackgroundTasks, Body, Depends, Header, Query
 from pydantic import BaseModel, Field
 
 from common import get_logger
-from common.supabase_client import get_supabase_client
+from common.pg_client import get_pg_client
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -175,9 +175,14 @@ async def list_factors(
     filters["deprecated_at"] = "is.null"
 
     sort_pair = parse_sort(sort, valid=VALID_SORT_FIELDS)
-    order = f"{sort_pair[0]}.{sort_pair[1]}" if sort_pair else "updated_at.desc"
+    # 稳定排序：所有因子的 updated_at 常相同（如批量注册时同时间戳），
+    # 若仅按 updated_at 排序，Postgres 翻页时并列行会跨页漂移 → 同一行
+    # 既出现在上一页末尾又出现在下一页开头，前端分页拼接后得到重复 id，
+    # 触发 React "two children with the same key" 警告。追加 id 作为 tiebreaker
+    # 使排序确定，分页窗口不再重叠。
+    order = f"{sort_pair[0]}.{sort_pair[1]},id.asc" if sort_pair else "updated_at.desc,id.asc"
 
-    client = get_supabase_client()
+    client = get_pg_client()
     total = client.count("factor_definitions", filters=filters)
 
     offset = (pg["page"] - 1) * pg["page_size"]
@@ -207,7 +212,7 @@ async def list_factors(
         value_filter: dict[str, str] = {}
         if value_start and value_end:
             value_filter["date"] = f"gte.{value_start}"
-            # supabase_client 的 filters 一个 key 只能出现一次，用 and 语法合并
+            # pg_client 的 filters 一个 key 只能出现一次，用 and 语法合并
             value_filter["and"] = f"(date.lte.{value_end})"
         valued_ids: set[str] = set()
         try:
@@ -230,10 +235,46 @@ async def list_factors(
 
 
 # ─── 静态路径必须在 /factors/{factor_id} 之前声明 ────────
+@router.get("/factors/coverage", summary="数据覆盖边界（因子值/K线 min~max 日期）")
+async def data_coverage():
+    """训练页「区间超出数据覆盖」提示用。
+
+    min/max 走索引（feature_values 主键 (factor_id,symbol,date)、
+    klines_all (timeframe,dt) 索引），毫秒级，不扫大表。
+    """
+    client = get_pg_client()
+
+    def _bound(table: str, col: str, direction: str, filters: dict | None = None):
+        rows = client.select(
+            table, columns=col, filters=filters, order=f"{col}.{direction}", limit=1
+        )
+        return str(rows[0][col])[:10] if rows else None
+
+    return {
+        "data": {
+            # 因子值（训练特征）覆盖
+            "feature_values": {
+                "start": _bound("feature_values", "date", "asc"),
+                "end": _bound("feature_values", "date", "desc"),
+            },
+            # 日 K（日频标签/因子依赖）
+            "klines_1d": {
+                "start": _bound("klines_all", "dt", "asc", {"timeframe": "eq.1d"}),
+                "end": _bound("klines_all", "dt", "desc", {"timeframe": "eq.1d"}),
+            },
+            # 5m K（分钟/小时级标签依赖）
+            "klines_5m": {
+                "start": _bound("klines_all", "dt", "asc", {"timeframe": "eq.5m"}),
+                "end": _bound("klines_all", "dt", "desc", {"timeframe": "eq.5m"}),
+            },
+        }
+    }
+
+
 @router.get("/factors/categories", summary="所有分类及其因子数量")
 async def list_categories():
     """聚合公开、未弃用因子的 category 统计"""
-    client = get_supabase_client()
+    client = get_pg_client()
     rows = client.select(
         "factor_definitions",
         columns="category",
@@ -260,7 +301,7 @@ async def list_categories():
 @router.get("/factors/tags", summary="所有标签及出现次数")
 async def list_tags():
     """聚合所有公开因子的 tag 统计（用于前端 autocomplete）"""
-    client = get_supabase_client()
+    client = get_pg_client()
     rows = client.select(
         "factor_definitions",
         columns="tags",
@@ -436,7 +477,7 @@ async def compute_factor(payload: ComputeFactorRequest = Body(...)):
     """
     # 解析公式
     if payload.factor_id:
-        client = get_supabase_client()
+        client = get_pg_client()
         rows = client.select(
             "factor_definitions",
             filters={"id": f"eq.{payload.factor_id}"},
@@ -641,7 +682,7 @@ async def create_factor(
     owner = _require_user_id(x_user_id)
 
     # 重名检查（同 owner 下）
-    client = get_supabase_client()
+    client = get_pg_client()
     dups = client.select(
         "factor_definitions",
         columns="id",
@@ -699,7 +740,7 @@ async def update_factor(
     """更新：只有 owner 可改；platform 因子拒绝。
     如果改了 formula，自动重新推断 output_type / lookback_days。
     """
-    client = get_supabase_client()
+    client = get_pg_client()
     existing = client.select(
         "factor_definitions",
         filters={"id": f"eq.{factor_id}"},
@@ -783,7 +824,7 @@ async def delete_factor(
     MVP：暂不检查"被模型训练用过"（model_factors 关联表 Epic 3 后续加）。
     但至少检查 feature_values 是否已有数据（有就软删 = 标记 deprecated）。
     """
-    client = get_supabase_client()
+    client = get_pg_client()
     existing = client.select(
         "factor_definitions",
         filters={"id": f"eq.{factor_id}"},
@@ -885,7 +926,7 @@ async def publish_factor(
     - long_description: 完整说明
     - license: 如 MIT
     """
-    client = get_supabase_client()
+    client = get_pg_client()
     existing = client.select(
         "factor_definitions",
         filters={"id": f"eq.{factor_id}"},
@@ -927,7 +968,7 @@ async def unpublish_factor(
     x_user_id: str | None = Header(None, alias="X-User-Id"),
 ):
     """public → private。只有 owner 可以撤销发布。"""
-    client = get_supabase_client()
+    client = get_pg_client()
     existing = client.select(
         "factor_definitions",
         filters={"id": f"eq.{factor_id}"},
@@ -981,7 +1022,7 @@ async def batch_query(payload: BatchQueryRequest = Body(...)):
     返回矩阵格式：
         values[symbol_idx][factor_idx]
     """
-    client = get_supabase_client()
+    client = get_pg_client()
 
     rows = client.select_all(
         "feature_values",
@@ -1045,7 +1086,7 @@ async def compare_factors(payload: CompareRequest = Body(...)):
 
     说明：winrate/sharpe 这些涉及"未来 N 日收益"，需要模型/回测联动，Epic 4 做。
     """
-    client = get_supabase_client()
+    client = get_pg_client()
 
     # 拉所有因子的定义（拿到 output_type）
     defs_rows = client.select(
@@ -1147,7 +1188,7 @@ async def get_factor_history(
     if not symbol_list:
         raise api_error(ErrorCode.INVALID_PARAM, "symbols cannot be empty")
 
-    client = get_supabase_client()
+    client = get_pg_client()
     # 确认因子存在
     existing = client.select(
         "factor_definitions", columns="id,output_type", filters={"id": f"eq.{factor_id}"}, limit=1
@@ -1231,7 +1272,7 @@ async def get_factor_performance(
     - boolean: trigger_count, trigger_rate
     - scalar: min / max / mean / std
     """
-    client = get_supabase_client()
+    client = get_pg_client()
     existing = client.select(
         "factor_definitions", columns="id,output_type", filters={"id": f"eq.{factor_id}"}, limit=1
     )
@@ -1285,7 +1326,7 @@ async def get_factor(
     factor_id: str,
     include_stats: bool = Query(True),
 ):
-    client = get_supabase_client()
+    client = get_pg_client()
     rows = client.select(
         "factor_definitions",
         filters={"id": f"eq.{factor_id}"},

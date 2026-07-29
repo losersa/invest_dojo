@@ -11,7 +11,7 @@ import httpx
 
 from common import (
     get_logger,
-    get_supabase_client,
+    get_pg_client,
     redis_health_check,
     settings,
 )
@@ -141,7 +141,7 @@ async def probe_all_services() -> list[dict[str, Any]]:
 # 基础设施健康
 # ──────────────────────────────────────────
 async def probe_infra() -> dict[str, Any]:
-    """检查 Redis / MinIO / Supabase（每项 3 秒超时）"""
+    """检查 Redis / MinIO / Postgres（每项 3 秒超时）"""
     loop = asyncio.get_event_loop()
 
     async def _with_timeout(fn, timeout=3):
@@ -150,15 +150,15 @@ async def probe_infra() -> dict[str, Any]:
         except (TimeoutError, Exception):
             return False
 
-    redis_ok, minio_ok, supabase_ok = await asyncio.gather(
+    redis_ok, minio_ok, postgres_ok = await asyncio.gather(
         _with_timeout(redis_health_check),
         _with_timeout(minio_health_check),
-        _with_timeout(lambda: get_supabase_client().health_check()),
+        _with_timeout(lambda: get_pg_client().health_check()),
     )
     return {
         "redis": {"status": "ok" if redis_ok else "down"},
         "minio": {"status": "ok" if minio_ok else "down"},
-        "supabase": {"status": "ok" if supabase_ok else "down"},
+        "postgres": {"status": "ok" if postgres_ok else "down"},
     }
 
 
@@ -167,7 +167,7 @@ async def probe_infra() -> dict[str, Any]:
 # ──────────────────────────────────────────
 async def collect_stats() -> dict[str, Any]:
     """收集各表的实时 count（用 PostgREST HEAD + count=exact）"""
-    client = get_supabase_client()
+    client = get_pg_client()
     loop = asyncio.get_event_loop()
 
     async def _count(table: str, filters: dict | None = None) -> int:

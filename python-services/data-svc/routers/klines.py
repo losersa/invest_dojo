@@ -23,7 +23,7 @@ from common_utils import (
 from fastapi import APIRouter, Depends, Query
 
 from common import get_logger
-from common.supabase_client import get_supabase_client
+from common.pg_client import get_pg_client
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -170,7 +170,7 @@ async def get_klines(
         scenario_id=scenario_id,
     )
 
-    client = get_supabase_client()
+    client = get_pg_client()
 
     # 总数
     total = client.count("klines_all", filters=filters)
@@ -241,7 +241,7 @@ async def get_latest_klines(
 
     as_of_iso = as_of_to_utc_iso(parse_as_of(as_of))
 
-    client = get_supabase_client()
+    client = get_pg_client()
     results: list[dict] = []
     for code in codes:
         filters = _build_klines_filters(

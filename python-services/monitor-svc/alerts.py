@@ -37,7 +37,7 @@ import time
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from common import get_logger, get_supabase_client
+from common import get_logger, get_pg_client
 
 from common_utils import probe_all_services, probe_infra
 
@@ -245,7 +245,7 @@ def _latest_feature_value_date(client) -> tuple[date | None, list[dict[str, Any]
 
 async def collect_data() -> ModuleResult:
     try:
-        client = get_supabase_client()
+        client = get_pg_client()
 
         symbols_n, klines_1d_latest, klines_5m_latest, fund_n, snapshots_latest = (
             await asyncio.gather(
@@ -311,7 +311,7 @@ async def collect_data() -> ModuleResult:
 # ──────────────────────────────────────────
 async def collect_feature(klines_1d_latest: date | None) -> ModuleResult:
     try:
-        client = get_supabase_client()
+        client = get_pg_client()
 
         factor_n, (fv_latest, fv_recent) = await asyncio.gather(
             _run_db(
@@ -402,7 +402,7 @@ async def _collect_jobs_module(
     id_col: str,
 ) -> ModuleResult:
     try:
-        client = get_supabase_client()
+        client = get_pg_client()
 
         total, running, completed, failed_total, recent_failed = await asyncio.gather(
             _run_db(lambda: client.count(table)),

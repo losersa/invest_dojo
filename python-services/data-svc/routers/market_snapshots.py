@@ -12,7 +12,7 @@ from common_utils import (
 from fastapi import APIRouter, Query
 
 from common import get_logger
-from common.supabase_client import get_supabase_client
+from common.pg_client import get_pg_client
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -38,7 +38,7 @@ async def get_snapshot(
             status=403,
         )
 
-    client = get_supabase_client()
+    client = get_pg_client()
     rows = client.select(
         "market_snapshots",
         columns="date,indexes,north_capital,money_flow,advance_decline,top_industries",
@@ -83,7 +83,7 @@ async def list_snapshots(
     elif clauses:
         filters["and"] = f"({','.join(clauses)})"
 
-    client = get_supabase_client()
+    client = get_pg_client()
     rows = client.select(
         "market_snapshots",
         columns="date,indexes,north_capital,money_flow,advance_decline,top_industries",

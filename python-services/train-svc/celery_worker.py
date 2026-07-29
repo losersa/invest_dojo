@@ -31,8 +31,8 @@ from common import celery_app
 #
 # 启动 Beat：在 Procfile 里的 `feature-beat` 行，或 start-dev.ps1 自动拉起。
 #
-# 默认开启：2026-05-01 曾因 Supabase Free tier 磁盘 500MB 接近上限而暂停；
-# 现已迁移到自托管 Supabase Lite（Docker），磁盘不再受限，故默认启用。
+# 默认开启：2026-05-01 曾因云端磁盘 500MB 接近上限而暂停；
+# 现已迁移到自托管 PostgreSQL（Docker），磁盘不再受限，故默认启用。
 # 仍可用环境变量 ENABLE_DAILY_BEAT=0 关闭。
 
 if os.environ.get("ENABLE_DAILY_BEAT", "1") == "1":

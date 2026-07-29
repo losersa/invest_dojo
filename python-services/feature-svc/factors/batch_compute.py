@@ -26,10 +26,11 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from common import get_logger
-from common.supabase_client import get_supabase_client
+from common.pg_client import get_pg_client
 
 from .dsl_parser import DSLError, parse_formula
 from .engine import EngineError, eval_ast
@@ -49,7 +50,7 @@ def _load_platform_factors(factor_ids: list[str] | None = None) -> list[dict]:
     Args:
         factor_ids: None = 所有 platform & public 因子；指定则只跑这些
     """
-    client = get_supabase_client()
+    client = get_pg_client()
     filters: dict[str, str] = {
         "owner": "eq.platform",
         "visibility": "eq.public",
@@ -74,7 +75,7 @@ def _load_active_symbols(limit: int | None = None) -> list[str]:
     注：symbols 表主键列是 `code`（不是 `symbol`）
     过滤：status='active' 或 NULL，排除已退市
     """
-    client = get_supabase_client()
+    client = get_pg_client()
     filters: dict[str, str] = {"delisted_at": "is.null"}
     rows = client.select_all(
         "symbols",
@@ -128,13 +129,18 @@ def compute_factor_batch(
     end: str,
     *,
     extra_days: int = 0,
-) -> tuple[list[dict], list[dict]]:
-    """对一批股票计算所有 parsed factors，返回要写入的记录 + 错误
+    dry_run: bool = False,
+) -> tuple[int, list[dict]]:
+    """对一批股票计算所有 parsed factors，流式 upsert 写入
 
     Returns:
-        (records, errors)
-        records: [{factor_id, symbol, date, value_num, value_bool, computed_at}, ...]
+        (written, errors)
+        written: 实际写入（upsert）的行数；dry_run 时为统计行数
         errors: [{factor_id, error}, ...]
+
+    内存优化：不再把所有因子的记录攒成一个巨型列表再一次性插入
+    （旧逻辑会在 16 并发下撑爆内存 OOM）。改为按因子产出后塞入有界缓冲，
+    缓冲达到阈值即分块 upsert 并清空，峰值内存稳定在 ~100MB/进程。
     """
     # 合并所有因子的 fields
     all_fields = _collect_needed_fields(parsed_factors)
@@ -152,7 +158,7 @@ def compute_factor_batch(
         needed_fields=all_fields,
     )
     if not panel or "close" not in panel:
-        return [], [{"factor_id": "<panel>", "error": "no kline data for batch"}]
+        return 0, [{"factor_id": "<panel>", "error": "no kline data for batch"}]
 
     # 裁到 start~end 的 mask（扣预热期）
     idx = panel["close"].index
@@ -167,8 +173,11 @@ def compute_factor_batch(
     target_index = idx[date_mask]
 
     computed_at = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
-    records: list[dict] = []
     errors: list[dict] = []
+    total_written = 0
+    buffer: list[dict] = []
+    # 有界缓冲阈值：达到即 flush，避免内存随因子数线性膨胀
+    FLUSH_THRESHOLD = 250_000
 
     for pf in parsed_factors:
         factor_id = pf["id"]
@@ -176,56 +185,56 @@ def compute_factor_batch(
         try:
             result = eval_ast(pf["ast"], panel)
             # 裁到目标日期
-            if isinstance(result, pd.DataFrame):
-                result = result.loc[date_mask]
-            else:
+            if not isinstance(result, pd.DataFrame):
                 continue
-            # 写 long 表
-            for dt, row in result.iterrows():
-                dt_str = dt.strftime("%Y-%m-%d") if hasattr(dt, "strftime") else str(dt)[:10]
-                for sym in symbols_batch:
-                    if sym not in row.index:
-                        continue
-                    val = row[sym]
-                    if pd.isna(val):
-                        continue
-                    if output_type == "boolean":
-                        records.append(
-                            {
-                                "factor_id": factor_id,
-                                "symbol": sym,
-                                "date": dt_str,
-                                "value_num": None,
-                                "value_bool": bool(val),
-                                "computed_at": computed_at,
-                            }
-                        )
-                    else:
-                        try:
-                            fval = float(val)
-                        except (TypeError, ValueError):
-                            continue
-                        # 过滤 inf / NaN（PostgREST 不接受 inf）
-                        if not (fval == fval) or abs(fval) == float("inf"):
-                            continue
-                        records.append(
-                            {
-                                "factor_id": factor_id,
-                                "symbol": sym,
-                                "date": dt_str,
-                                "value_num": fval,
-                                "value_bool": None,
-                                "computed_at": computed_at,
-                            }
-                        )
+            result = result.loc[date_mask]
+            if result.empty:
+                continue
+
+            # 向量化 melt 成 long 表，替代逐行 Python 循环（数千倍提速）
+            # 注意：新版 pandas 的 stack() 默认即 drop NA，不再接受 dropna 参数
+            long = result.stack()
+            if long.empty:
+                continue
+            df = long.reset_index()
+            df.columns = ["date", "symbol", "value"]
+            df["date"] = df["date"].dt.strftime("%Y-%m-%d")
+            df["factor_id"] = factor_id
+            df["computed_at"] = computed_at
+
+            if output_type == "boolean":
+                df["value_bool"] = df["value"].astype(bool)
+                df["value_num"] = None
+            else:
+                val_f = pd.to_numeric(df["value"], errors="coerce")
+                df["value_num"] = val_f
+                df["value_bool"] = None
+                # 过滤 inf / NaN（PostgreSQL 不接受 inf/nan）
+                df = df[val_f.notna() & np.isfinite(val_f.values)]
+
+            out_cols = ["factor_id", "symbol", "date", "value_num", "value_bool", "computed_at"]
+            buffer.extend(df[out_cols].to_dict("records"))
+
+            # 有界缓冲：达到阈值即 flush，防止内存膨胀（OOM 根因）
+            if not dry_run and len(buffer) >= FLUSH_THRESHOLD:
+                total_written += _upsert_records(buffer)
+                buffer = []
         except EngineError as e:
             errors.append({"factor_id": factor_id, "error": f"engine: {e.message}"})
         except Exception as e:  # noqa: BLE001
             errors.append({"factor_id": factor_id, "error": f"{type(e).__name__}: {e}"})
 
+    # flush 剩余缓冲
+    if not dry_run:
+        if buffer:
+            total_written += _upsert_records(buffer)
+    else:
+        # dry-run 仅统计行数（不落库）
+        total_written = len(buffer)
+
     # target_index 可以用于统计日期覆盖
     _ = target_index
-    return records, errors
+    return total_written, errors
 
 
 def _upsert_records(records: list[dict], chunk_size: int = 1000) -> int:
@@ -246,7 +255,7 @@ def _upsert_records(records: list[dict], chunk_size: int = 1000) -> int:
         deduped[(r["factor_id"], r["symbol"], r["date"])] = r
     records = list(deduped.values())
 
-    client = get_supabase_client()
+    client = get_pg_client()
     total = 0
     for i in range(0, len(records), chunk_size):
         chunk = records[i : i + chunk_size]
@@ -331,11 +340,12 @@ def compute_and_save(
     for batch_start in range(0, len(symbols), batch_size):
         batch = symbols[batch_start : batch_start + batch_size]
         try:
-            records, errors = compute_factor_batch(
+            written, errors = compute_factor_batch(
                 parsed_factors=parsed,
                 symbols_batch=batch,
                 start=start,
                 end=end,
+                dry_run=dry_run,
             )
             total_errors.extend(errors)
             if dry_run:
@@ -343,11 +353,10 @@ def compute_and_save(
                     "batch_compute.dry_run",
                     batch_idx=batches_done,
                     symbols_in_batch=len(batch),
-                    records_would_write=len(records),
+                    records_would_write=written,
                     errors_in_batch=len(errors),
                 )
             else:
-                written = _upsert_records(records)
                 total_written += written
                 logger.info(
                     "batch_compute.batch_done",

@@ -147,7 +147,10 @@ class PGClient:
         except Exception as e:  # noqa: BLE001 - 探测失败降级为文本
             logger.warning("pg.col_type.failed", table=table, col=col, error=str(e))
             dtype = ""
-        self._col_type_cache[key] = dtype
+        # 空结果不缓存：列不存在（如迁移未执行后补执行）或探测瞬断时，
+        # 缓存空串会让 jsonb 列永远跳过 Json 适配 → "can't adapt type 'dict'"
+        if dtype:
+            self._col_type_cache[key] = dtype
         return dtype
 
     @staticmethod
@@ -320,6 +323,9 @@ class PGClient:
         """根据列类型适配参数：jsonb 列用 psycopg2.extras.Json 序列化。"""
         if value is None:
             return None
+        # dict/list 一律按 JSON 序列化（对应 jsonb 列），避免 psycopg2 'can't adapt dict'
+        if isinstance(value, (dict, list)):
+            return psycopg2.extras.Json(value)
         if "jsonb" in self._col_type(table, col).lower():
             return psycopg2.extras.Json(value)
         return value
@@ -451,15 +457,11 @@ class PGClient:
         self.close()
 
 
-# 向后兼容别名：原代码里 `SupabaseClient` / `get_supabase_client` 继续可用
-SupabaseClient = PGClient
-
-
 # 单例（按需初始化）
 _client: PGClient | None = None
 
 
-def get_supabase_client() -> PGClient:
+def get_pg_client() -> PGClient:
     """获取单例客户端"""
     global _client
     if _client is None:

@@ -24,7 +24,7 @@ from common.config import settings
 from common.logging import get_logger, setup_logging
 from common.minio_client import minio_health_check
 from common.redis_client import async_redis_health_check
-from common.supabase_client import get_supabase_client
+from common.pg_client import get_pg_client
 
 logger = get_logger(__name__)
 
@@ -167,7 +167,7 @@ def create_app(
         checks = {
             "redis": await async_redis_health_check(),
             "minio": minio_health_check(),
-            "supabase": get_supabase_client().health_check(),
+            "postgres": get_pg_client().health_check(),
         }
         all_ok = all(checks.values())
         status_code = 200 if all_ok else 503
