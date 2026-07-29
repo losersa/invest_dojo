@@ -390,3 +390,234 @@ devcloud 磁盘扩容基于快照重建环境，回滚到扩容前的快照点�
 - **强烈建议 `git init` + 高频提交**（哪怕只本地）——有 git 则此类事故顶多丢未提交改动；
 - 无 git 时，重要改动完成后立即打包备份（`tar czf /tmp/backup-$(date +%F).tgz <关键路径>`）；
 - 云平台做磁盘扩容/快照类操作前，先确认工作区已提交或备份。
+## 19. supabase_client filter 值含 "." 被误拆成操作符（2026-07-26）
+
+### 现象
+`GET /routine/runs?task_name=feature.compute_incremental` 返回空数组；
+不带 `task_name` 过滤却能正常查到该任务的记录。
+
+### 根因
+`common/supabase_client.py` `_translate_one` 用 `val.partition(".")` 拆 `op.value`。
+值本身含点号（celery 任务名 `feature.compute_incremental`）时，op 被解析成
+`feature`、value 只剩 `compute_incremental`，落入「未知操作符降级等值」分支
+→ `task_name = 'compute_incremental'` 恒不匹配，且只在日志里留一条
+`pg.unknown_op` warning，接口表现是「静默查空」。
+
+### 修复
+调用方传显式操作符前缀 `eq.{value}`——`partition` 只切第一个点，
+`feature.compute_incremental` 余下部分完整保留。
+
+### 防范
+- 凡是 filter 值可能含 `.`（任务名、文件路径、域名、版本号）**必须带显式
+  `eq.`/`gte.`/`in.(...)` 前缀**，不要传裸值；裸值仅适用于无点号的纯值；
+- 排查「过滤即空、不过滤有数」类问题时，先怀疑 filter 翻译层，直接看
+  `pg.unknown_op` warning 日志。
+
+## 20. 前端"改了没变化"第三形态：预渲染 HTML 被缓存一年（2026-07-26）
+
+### 现象
+重新 build + 重启后，服务端 HTML 已引用新 chunk、磁盘产物也正确，
+但用户浏览器看到的还是旧页面。
+
+### 根因
+Next.js 静态预渲染页面默认响应头 `Cache-Control: s-maxage=31536000`
+（`x-nextjs-prerender: 1`）——HTML 文档被浏览器/中间代理（远程访问的
+端口转发/预览代理是 shared cache，会执行 s-maxage）缓存长达一年。
+旧 HTML 引用旧 chunk 哈希，新旧产物替换后用户端毫无感知。
+
+### 排查路径（"前端没变"三步定位）
+1. `grep <特征串> .next/static/chunks/**` —— 产物里有没有（没有=没 build 进去）；
+2. `curl -s localhost:3000/<page> | grep -o chunk哈希` 对比磁盘文件名 —— 服务端发的对不对；
+3. `curl -sI localhost:3000/<page> | grep -i cache-control` —— 是不是被缓存了。
+前两步对、第三步是 `s-maxage=31536000` → 本坑。
+
+### 修复
+`next.config.ts` 加 `headers()`：HTML 路由 `Cache-Control: no-cache, must-revalidate`
+（排除 `_next/static` 等带哈希资源，保持 immutable）。
+**注意**：已按旧头缓存的客户端需一次硬刷新（Ctrl+Shift+R）才能脱坑。
+
+### 防范
+内部工具/频繁重构建的前端，HTML 一律 no-cache；只让带内容哈希的静态资源长缓存。
+
+## 21. 训练落库 "can't adapt type 'dict'"：列缺失 + 类型探测缓存毒化（2026-07-26）
+
+### 现象
+训练 fitting 完成、模型已传 MinIO 后，`client.insert("models", {...})` 抛
+`psycopg2.ProgrammingError: can't adapt type 'dict'`，训练失败。
+
+### 根因（双层）
+1. **迁移漏执行**：`migrations/006_alter_models_training_result.sql`（models 加
+   `feature_importance JSONB`）未应用到当前库（07-25 devcloud 恢复的 dump 早于 006）。
+   `_col_type` 在 information_schema 查不到该列 → 返回空串 → dict 不经 `Json()` 适配，
+   psycopg2 客户端侧直接报错（SQL 根本没发到 DB，所以不是"column does not exist"）。
+2. **缓存毒化**：`_col_type` 把空结果也永久缓存，即使补上列，进程内依旧按
+   非 jsonb 处理，必须重启才能恢复。
+
+### 修复
+- 应用 006 迁移补列（`ADD COLUMN IF NOT EXISTS`，幂等）；
+- `_col_type` 空结果不缓存（列后补/探测瞬断可自愈）；
+- 重启 celery worker 清掉已毒化的进程内缓存。
+
+### 防范
+- "can't adapt type 'X'" 先查**列是否存在**（`information_schema.columns`），
+  再查类型探测日志 `pg.col_type.failed`；
+- 恢复数据库 dump 后，按 `migrations/` 序号逐个核对已应用的迁移
+  （`ls migrations/*.sql` vs 实际表结构抽查）；
+- 会失败的临时探测结果一律不进永久缓存。
+
+## 22. 训练模型退化为单叶常数（AUC=0.5、重要度全 0、零正类预测）（2026-07-27）
+
+### 现象
+训练"成功"但训练/验证 AUC 精确 0.5000、特征重要度全 0、模型文件仅几 KB、
+混淆矩阵全判负类。
+
+### 根因（两个叠加）
+1. **整行 dropna 把样本饿死**：`train_lightgbm` 原来按「任一特征缺失」丢整行，
+   70 个含稀疏因子的特征取交集后 1 年区间仅剩 ~1700 样本（早期每天 ~7 个）。
+   ——LightGBM 原生支持 NaN（分裂自动学默认方向），根本不用整行丢。
+2. **min_child_samples 不随样本量缩放**：默认 100 / 调参网格 200~400，
+   464 个训练样本下叶子约束 ≥200 → 树无法分裂 → 单叶常数模型，
+   且不报任何错。
+
+### 修复
+- dropna 改 `how="all"`（只丢全部特征缺失的行）；
+- 默认与调参网格的 min_child_samples 都按训练样本量收缩
+  （`min(原值, max(20, n//10))`，调参网格按最小训练折 40% 算）；
+- 新增退化检测：双 AUC<0.52 → `metrics_table.degenerate=true` + 
+  `train.degenerate` 告警日志 + 结果页红色告警；训练样本 <1000 黄色提示。
+
+### 防范
+- "成功但 AUC=0.5"必须视为事故而不是"模型不行"——先查样本量和叶子约束；
+- 所有"最小样本"类超参（min_child_samples/min_samples_leaf）都要随 n 缩放；
+- 涉及丢弃样本的逻辑，先想清楚引擎是否原生支持缺失值。
+
+## 23. Booster.feature_name() 返回 Column_i：按模型内列名对齐特征 = 全 NaN 静默失效（2026-07-27）
+
+### 现象
+真实回测引擎 predict 报 `The number of features in data (273) is not equal to
+the number of features in model (327)`；改成按 `booster.feature_name()` 对齐后
+不报错了，但日志出现 `feature_missing_filled_nan n_missing=327`——**所有列全被
+补成 NaN**，预测退化为基线概率，0 信号 0 交易，且不抛任何异常。
+
+### 根因
+训练时 `X = data[feature_cols].values` 传的是 **numpy 数组**，LightGBM Booster
+内部记录的特征名是占位符 `Column_0...Column_326`，与真实因子列名毫无关系。
+按 `feature_name()` 去 DataFrame 找列必然全 miss → 全 NaN。
+273 vs 327 的差异另有原因：`models.input_features` 含 54 个 peer 衍生列
+（`__rank_industry` 等），回测窗口内部分基础因子无数据导致缺列。
+
+### 修复
+`python-services/backtest-svc/real_engine.py`：按 `models.input_features` 的
+**原始顺序**重建矩阵（这才是训练时 `feature_cols` 的真实快照），缺列补 NaN
+（LightGBM 原生支持），最后 `.values` 传 numpy 与训练侧口径一致；并校验
+`len(input_features) == booster.num_feature()`，不一致直接报错拒绝预测。
+
+### 防范
+- 训练用 numpy 喂 LightGBM 时，`feature_name()` 只有 `Column_i`，**跨服务复现
+  预测必须依赖外部保存的列名快照**（本项目为 `models.input_features`）；
+- "补 NaN 数量 == 特征总数"应视为致命错误而非 warning——对齐逻辑写反了；
+- 冒烟验证不能只看"接口 200 + 结构齐全"，要看 n_signals/交易数是否合理。
+
+## 24. select_all 的 LIMIT/OFFSET 深分页：真实回测 87s 超时（2026-07-27）
+
+### 现象
+模型回测（model 类型，run-fast 接口）前端报 `Request timeout after 15000ms`；
+后端该请求实际耗时 ~85s，几乎全耗在 build_dataset 的 fetch_features 上。
+
+### 根因
+`python-services/common/supabase_client.py` 的 `select_all` 用
+`LIMIT page_size OFFSET k` 循环分页拉全量。回测窗口内 feature_values 约 270 万行
+（273 基础因子 × 同业池 ~80 × ~126 交易日），page_size=10000 → 约 270 次查询；
+PostgreSQL 对大 OFFSET 需扫描并跳过前 N 行，最后一次 OFFSET 达 260 万 → 单次查询
+就很慢，270 次叠加成 ~87s。训练时该耗时被异步 Celery 任务掩盖（用户无感），
+同步的回测接口直接暴露。
+
+### 修复
+- `train-svc/pipeline.py`：fetch_features / build_dataset 增加 page_size 参数
+  （默认 10000，训练行为不变，向后兼容）；
+- `backtest-svc/real_engine.py`：调用 build_dataset 传 feature_page_size=1_000_000，
+  每个 50 因子分块一次性拉完，分页从 ~270 次降到 ~6 次，且不再有深 OFFSET；
+- `backtest-svc/main.py`：run-fast 真实引擎改由线程池
+  `await loop.run_in_executor(None, run_real_backtest, ...)` 执行，避免 ~17s 阻塞
+  event loop（否则整服务在回测期间无法响应其他请求）；
+- `apps/web/src/lib/sdk.ts`：前端全局 timeoutMs 15_000 → 120_000。
+
+### 防范
+- 分页拉大表务必避免 OFFSET 深分页：优先 keyset/游标分页（基于有序主键），
+  或在已知结果集有限时一次性大页拉完；
+- 同步 HTTP 接口里跑重型数据拉取/特征工程，应放进线程池或改异步任务队列，
+  否则会阻塞整个服务 event loop；
+- 前端默认 15s 超时对「真实计算」类请求过短，应区分快速查询与重型任务超时。
+
+### 验证
+build_dataset 87.55s → 16.47s（提速 ~5.3×）；整体回测 ~17s 落在 120s 超时内；冒烟全绿。
+
+---
+
+## 25. backtest worker 模块名冲突：backtest.run_backtest 永不注册，任务卡 pending（2026-07-27）
+
+### 现象
+`POST /api/v1/backtests` 返回 200（bt_id + status=pending），但任务永远停在 pending，轮询 `GET /{id}` 一直是 pending、progress 始终 null；celery worker 进程在、日志 `Connected to redis` 且 `ready`，但 `backtest.run_backtest` 不消费。
+
+### 根因
+backtest worker 原本用 `celery -A celery_worker.celery_app` 启动（文件 `python-services/backtest-svc/celery_worker.py`），而 train-svc 也有同名 `celery_worker.py`。`start-celery.sh` 的 PYTHONPATH 把 train-svc 排在 backtest-svc 之前，import `celery_worker` 时**加载到 train-svc 的模块** → backtest worker 实际只注册了 `train.*` 任务，`backtest.run_backtest` 从未注册；`send_task` 把消息投进 `backtest` 队列，却无 worker 认领 → 永久 pending。（与 `task_routes` 把 `backtest.*` 路由到 `backtest` 队列无关，是 worker 本身没注册该任务。）
+
+### 修复
+- 把 backtest-svc 的 worker 模块重命名为 **`backtest_celery.py`**（唯一名，不再与 train-svc 冲突）；
+- `start-celery.sh` 改为 `celery -A backtest_celery.celery_app worker --queues=backtest ...`；
+- 重启 worker：`ps` 确认命令行是 `backtest_celery.celery_app`，启动日志 `[tasks]` 列表出现 `. backtest.run_backtest`。
+
+### 防范
+- 多服务共用 `common.celery_app` 时，**每个服务的 worker 模块名必须唯一**（不要都叫 `celery_worker`）；
+- 新增 celery 任务后，启动 worker 必看 `[tasks]` 列表确认任务已注册，再投 task；
+- PYTHONPATH 顺序敏感：同名模块谁在前谁被优先 import，跨服务重名是大雷。
+
+### 验证
+重命名并重启后重新 `POST`：`pending→running(30%)→completed(100%)`，summary 等指标落库。
+
+---
+
+## 26. feature_values 列是 value_num/value_bool 而非 value；Celery 缓存旧模块需重启 worker（2026-07-28）
+
+### 现象
+- 横截面回测读 `feature_values` 报 `UndefinedColumn: column feature_values.value does not exist`（原 mock 用 `value` 列名）；
+- 改 `real_engine.py` 后跑回测，仍走旧逻辑（factor 走 mock、`meta` 为 null），源码改动不生效。
+
+### 根因
+- `feature_values` 表实际列是 `factor_id, symbol, date, value_num, value_bool`（数值因子落 `value_num`，布尔因子落 `value_bool`），并不存在 `value` 列；
+- Celery worker 进程启动时就把 `real_engine` 等模块 import 进内存并缓存，**编辑源码不会自动重载**，必须重启 worker 才生效（即便 `main.py` 的 run-fast 走线程池即时加载，投进 Celery 队列的任务仍用旧模块）。
+
+### 修复
+- 读因子值按类型分流：`value_num`（数值，NaN 视为缺失）与 `value_bool`（布尔，None 视为缺失），不要读 `value`；
+- 每次改动 `real_engine.py` / `backtest_celery.py` 后：`pkill -f backtest_celery` 再 `start-celery.sh` 重启 worker；确认启动日志 `[tasks]` 含 `backtest.run_backtest` 且时间戳为最新。
+
+### 防范
+- 改表结构/列名相关代码前，先 `SELECT` 确认列名，不要凭 mock 推断；
+- 凡是经 Celery 执行的代码改动，**必须重启 worker**，不要指望热重载；本地 run-fast（线程池）改动能即时生效，但验证完整链路务必用重启后的 worker。
+
+### 验证
+factor / composite / signal_file 端到端跑通，`meta` 含 `engine: real_xsec`、holdings、in_sample 等，不再报 `UndefinedColumn`。
+
+---
+
+## 27. 回测净值曲线三序列量纲不一致导致组合线被压扁、左轴数值错乱（2026-07-28）
+
+### 现象
+模型回测结果页：组合净值曲线左轴显示 ~90 万量级、组合线被压到图底（看似净值 0.89），与 summary 的 total_return +18.51% 对不上；「指数K线」与「002662(buy&hold)」图例文字重叠。
+
+### 根因
+`real_engine` 对 model 回测返回的 `equity_curve` 三个数组量纲不同：
+- `portfolio` = `equity / initial_capital` → 净值比（~1.0）
+- `benchmark` = `initial_capital * price / b0` → 绝对资金（~100 万）
+- `benchmark_price` = 原始收盘价（~10–20）
+
+前端 `EquityChart` 原代码把三者直接画在同一坐标轴，`all = [...portfolio, ...benchmark, ...bpNorm]` 的 min/max 被资金量级（~100 万）主导，组合净值比（~1.0）被压到坐标轴底部，左轴刻度变成资金值而非净值，用户误以为数值错误。
+
+### 修复
+`EquityChart` 改为先归一成净值比：`toRatio(a) = a.map(v => v / a[0])`，三条序列起点统一为 1.0（=初始资金）后同图绘制；左轴标注「净值（起点 1.0 = 初始资金）」；图例精简为「组合净值 / 基准 / 指数K线」并拉开间距；图下加一行说明基准=目标股买入持有（被动对照，非模型交易）。
+
+### 防范
+绘制多序列对比图时，先确认各序列量纲，必须统一到同一可比尺度（净值比或统一货币）再画；不可直接拼不同量纲数组求 min/max。
+
+### 验证
+`tsc --noEmit` 通过；归一化后组合终点 1.185 与 total_return +18.51% 一致。

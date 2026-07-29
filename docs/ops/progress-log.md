@@ -2,38 +2,91 @@
 
 > 本文档由 `generate_progress_doc.ps1` **自动生成**，唯一数据源为
 > `investdojo/apps/web/src/app/admin/progress/progress-data.json`（同时驱动 `/admin/progress` 页面）。
-> 最后更新：**2026-07-25**（Linux 环境无生成脚本，本期由 dev-docs 工作流手动同步）
+> 最后更新：**2026-07-28**（Linux 环境无生成脚本，本期由 dev-docs 工作流手动同步）
 
-## 最新进展（2026-07-25）
+## 最新进展（2026-07-28 补 9）· 回测 P1/P2 补齐（横截面真实引擎 + Top-N + 样本内外 + 指数基准）
 
-**告警中心上线，K线 5m 管线例行化，训练页因子修复；磁盘事故与快照回滚已处置**
+**回测 P1/P2 补齐：横截面真实引擎（factor/composite/signal_file）+ Top-N 面板 + 样本内/外提示 + 指数 K 线基准**
 
-- **告警中心上线（/admin/alerts）**
-  - monitor-svc 新增 `GET /api/v1/monitor/alerts`：6 模块实时报表 + 告警聚合
-  - 前端 `/admin/alerts` 页面：总体状态横幅 + 模块卡片 + 失败任务列表，每分钟自动刷新
-  - 告警规则：K线陈旧 / 因子值落后K线 / 24h任务失败 / 服务宕机 / 磁盘≥85%
-- **训练页因子加载问题修复**
-  - 主因定位：`page_size=500` 超 feature-svc 上限(100) → 422 → 列表空白
-  - 深层根因：`has_values` 标注拉全量行 → 15s+/60s 超时；改主键索引 EXISTS（~400 倍）
-  - 因子可选性与训练区间联动（value_start/value_end），无值因子禁选，默认区间近 3 个月
-- **K线数据管线改造（5m 例行化）**
-  - 盘后例行：17:35 拉 5m 并聚合日K落库（替代独立日K拉取），17:45 快照，19:00 因子（仅工作日）
-  - 聚合日K与官方对比一致；调度分层按"数据源自检"判定交易日（不硬编码星期几）
-  - 回补 2026-05-01 起 5m 空缺段 + market_snapshots 至 2026-07-24
-- **磁盘事故处置与工作区回滚重建**
-  - /data 写满 100% → PG WAL 失败崩溃循环；清 18.1GB 无引用镜像恢复，告警中心加磁盘监控
-  - 磁盘扩容致工作区快照回滚、当日改动全失——按记录全量重建；教训：项目急需 git 版本管理
+- **横截面真实回测引擎上线（factor/composite/signal_file）**
+  - `real_engine` 新增 `_build_score_df`：factor 读 `feature_values(value_num/value_bool)`、composite 多因子 z 合并、signal_file 从 MinIO 加载 `signals/{id}.csv`（`dtype=str` 保留股票代码前导零）
+  - `_simulate_cross_section`：打分 pivot+ffill、默认周频调仓、<2 只跳过调仓、>35% 价格尖刺过滤、Top-N 等权组合 + `benchmark_price` 基准
+  - `_compute_metrics` 补 `ic`/`ir`；`run_real_backtest` 按 `type` 分发，非 model 走 `run_xsec_backtest`，restrict 到显式股票池
+  - Celery worker 全策略类型路由真实引擎；`main.py` 快跑路径 `meta.engine` 非 model 标 `real_xsec`
+- **前端回测页策略切换 + 面板展示**
+  - 策略类型切换（模型 / 因子 / 复合因子 / 信号文件）+ 条件输入（factor_id / compositeId / signalFileId / 自定义股票池），`run()` 构建完整 config（xsec→equal_weight+weekly）
+  - 样本内/外徽标（`In-sample`/`Out-of-sample` + overlap 天数）
+  - Top-N 持仓表（symbol / entry_date / avg_cost / ret / weight）
+  - 净值曲线叠加指数 K 线（`benchmark_price` 紫色虚线）
+- **验证与限制**：4 种策略类型端到端跑通，meta 含 engine/in_sample/training_range/holdings/n_symbols；model 回测正确识别 `in_sample:True, training_range:2025-06-01~2026-06-01, overlap:152`；`klines_all` 无指数数据（000300 为 0 行），基准回退等权代理标注 `000300(等权代理)`——数据覆盖限制非引擎缺陷；前端 `tsc --noEmit` 通过（exit 0）
+- 涉及文件：`python-services/backtest-svc/real_engine.py`、`python-services/backtest-svc/backtest_celery.py`、`python-services/backtest-svc/main.py`、`apps/web/src/app/backtest/page.tsx`、`packages/api/src/types/backtest.ts`、`scripts/make_sample_signal.py`
 
-涉及文件：`monitor-svc/alerts.py`、`common/supabase_client.py`、`feature-svc/routers/factors.py`、
-`scripts/update_5m_klines.py`、`train-svc/feature_tasks.py`、`train-svc/celery_worker.py`、
-`data-svc/routers/admin.py`、`packages/api/src/*`、`apps/web/src/app/admin/alerts/page.tsx`、
-`apps/web/src/app/train/TrainPage.tsx`、`.codebuddy/skills/dev-docs/`、`docs/`。
+## 上期进展（2026-07-27 补 8）· 回测完整异步化
+
+**回测完整异步化：提交任务 → Celery 队列执行 → 前端轮询进度，长区间/大池回测不再卡同步超时上限**
+
+- 异步链路上线：`POST /api/v1/backtests` 只写库 + 投递 Celery 任务（秒级返回 bt_id + pending），专用 backtest worker（`--queues=backtest`）消费任务并边跑边写 `backtests` 表的 `status/progress` 到库；前端提交后每 2 秒轮询 `GET /{id}`，进度条 + 阶段文案（加载模型/构建特征/预测/模拟/收尾），`completed/failed` 即停。
+- 真实引擎进度可观测：`real_engine.run_real_backtest` 增加 `on_progress` 回调（10/30/60/80/95% 五阶段）；Celery 任务落库 `summary / equity_curve / segment_performance / feature_importance`，失败写 `error` 并标记 `failed`。
+- 排障：worker 模块名 `celery_worker` 与 train-svc 冲突致 `backtest.run_backtest` 永不注册，重命名为 `backtest_celery.py`（踩坑 #25）；`start-celery.sh` 已改拉起专用 worker。
+- 验证：`POST` 返回 200(pending) → 轮询 `pending→running(30%)→completed(100%)`，全套指标落库。
+- 涉及文件：`backtest-svc/main.py`、`backtest-svc/backtest_celery.py`、`backtest-svc/real_engine.py`、`start-celery.sh`、`common/supabase_client.py`、`backtest-client.ts`、`backtest.ts`、`backtest/page.tsx`、`migrations/010_backtest_progress.sql`。
+
+## 上上期进展（2026-07-27 补 7）· 回测超时修复 + 特征工程提速
+
+**回测接入真实引擎：模型回测复用训练特征工程真实预测，默认锁定预测标的**
+
+- **真实回测引擎上线（model 类型）**
+  - 回测不再是 mock 随机数：加载训练产出的 LightGBM 模型，复用与训练完全一致的特征工程（含同板块 peer 特征）与 Youden J 阈值出信号
+  - 单只标的日频资金模拟：含手续费/印花税/滑点/T+1，产出真实净值曲线、交易记录与全套指标
+  - 指数行情缺失时基准自动退回「目标股买入持有」，meta 标注实际引擎与基准
+- **回测页默认锁定模型预测标的**
+  - 从训练页带模型进入回测时，股票池固定为「该模型预测股票」，避免选错池导致特征不匹配
+  - 结果区显示「标的」「引擎」徽标，历史记录中模型回测标注「模型标的」
+- **冒烟验证与踩坑沉淀**
+  - 新增 `scripts/smoke_real_backtest.py` 端到端冒烟（选模型→run-fast→校验），全绿通过
+  - 沉淀踩坑 #23：numpy 训练的 Booster 列名是 `Column_i`，特征对齐必须以 `models.input_features` 为准
+- **池特征（peer）训练/回测一致性修复**
+  - 训练把股票池快照存入 `models.metadata.symbols`；回测按同一池复现 peer 横截面特征（参照系一致）
+  - 旧模型无快照时经 `training_job_id` 回溯训练配置，两者皆无才退回自动同行业（与训练默认一致）
+- **回测超时修复 + 特征工程提速 5.3×**
+  - 根因：`select_all` 的 LIMIT/OFFSET 深分页，回测窗口 ~270 万行 `feature_values` 被拆成 ~270 次深查询，`build_dataset` 耗时 87.5s，前端 15s 超时
+  - 修复：`fetch_features`/`build_dataset` 增加 `page_size` 参数；回测传 `feature_page_size=1_000_000` 每分块一次拉完 → `build_dataset` 87.5s→16.5s
+  - 前端 `timeoutMs` 15s→120s；run-fast 真实引擎改线程池执行避免阻塞 event loop；回测端到端 ~16s，落在超时内
+
+涉及文件：`python-services/backtest-svc/real_engine.py`、`python-services/backtest-svc/main.py`、
+`python-services/train-svc/tasks.py`、`python-services/train-svc/pipeline.py`、
+`apps/web/src/app/backtest/page.tsx`、`apps/web/src/lib/sdk.ts`、`scripts/smoke_real_backtest.py`。
+
+---
+
+## 上期进展（2026-07-26）
+
+**例行化任务日志支持按天/按次回放；训练页标签配置合并到「标签定义」卡片**
+
+- **例行任务日志按次回放（/admin/data）**
+  - 任务卡片「日志」页签新增近 60 天运行记录选择器：每天/每次运行一个状态色块（✓/✗/⊘），同日多次带时分区分
+  - 选中后展示当次运行的状态、耗时、参数（days/start/end/date_str/cmd）、依赖检查、错误与完整日志尾部——不再只有最新一次
+  - data-svc `GET /routine/runs` 新增 `task_name` 过滤，排序补 `finished_at.desc`；巡检格点表同日多次运行取最新一次
+  - 修复 filter 值含点号被误拆操作符导致查询恒空（`task_name` 需显式 `eq.` 前缀，踩坑手册 ## 19）
+- **训练页布局合并**
+  - 「预测目标 return_Nx」移入「标签定义」卡片：标签三要素（前向窗口+指标类型+阈值/表达式）集中一处，不再两处重复
+  - 「板块对比 & 目标股票」移回「训练参数」卡片（股票池之后，与目标股自动填池联动）
+
+涉及文件：`data-svc/routers/admin.py`、`apps/web/src/app/admin/data/page.tsx`、
+`docs/ops/dev-troubleshooting.md`、`docs/features/routine-observability.md`、
+`apps/web/src/app/admin/progress/progress-data.json`。
 
 ---
 
 ## 需求排单（Backlog）
 
-_暂无排单需求。新增需求请用 sync_progress.ps1 -Backlog ... 登记。_
+| 优先级 | 需求 | 说明 | 登记日 |
+|---|---|---|---|
+| P1 | 面板模型真实回测（Top-N 组合） | 无 target_symbol 的面板模型：每日按概率排序选 Top-N，等权/加权 + 换手控制 | 2026-07-27 |
+| P1 | 回测区间样本内/外提示 | 区间与 training_range 重叠时提示「样本内结果」，支持一键设为训练 end 之后 | 2026-07-27 |
+| P2 | factor/composite/signal_file 接真实引擎 | 复用真实引擎资金模拟框架，仅替换信号来源 | 2026-07-27 |
+| P2 | 补齐指数 K 线（000300 等） | 库内缺指数日线，基准目前退回目标股 buy&hold | 2026-07-27 |
+| P3 | 异步 realistic 模式开放 | 长区间/大池走异步任务队列（run-fast 有 30s 上限） | 2026-07-27 |
 
 ## 总览
 
@@ -154,6 +207,41 @@ _暂无排单需求。新增需求请用 sync_progress.ps1 -Backlog ... 登记�
   - UTF-8 BOM 编码 + cmd /c 启动前端（完成）
 
 ## 开发日志
+
+### 2026-07-26
+**状态**：例行化任务日志支持按天/按次回放；训练页标签配置合并到「标签定义」卡片
+
+- **例行任务日志按次回放（/admin/data）**
+  - 任务卡片「日志」页签新增近 60 天运行记录选择器：每天/每次运行一个状态色块（✓/✗/⊘），同日多次带时分区分
+  - 选中后展示当次运行的状态、耗时、参数（days/start/end/date_str/cmd）、依赖检查、错误与完整日志尾部——不再只有最新一次
+  - data-svc `GET /routine/runs` 新增 `task_name` 过滤，排序补 `finished_at.desc`；巡检格点表同日多次运行取最新一次
+  - 修复 filter 值含点号被误拆操作符导致查询恒空（`task_name` 需显式 `eq.` 前缀，踩坑手册 ## 19）
+- **训练页布局合并**
+  - 「预测目标 return_Nx」移入「标签定义」卡片：标签三要素（前向窗口+指标类型+阈值/表达式）集中一处，不再两处重复
+  - 「板块对比 & 目标股票」移回「训练参数」卡片（股票池之后，与目标股自动填池联动）
+
+  涉及文件：python-services/data-svc/routers/admin.py, apps/web/src/app/admin/data/page.tsx, apps/web/src/app/train/TrainPage.tsx, docs/ops/dev-troubleshooting.md, docs/features/routine-observability.md, apps/web/src/app/admin/progress/progress-data.json
+
+### 2026-07-25
+**状态**：告警中心上线，K线 5m 管线例行化，训练页因子修复；磁盘事故与快照回滚已处置
+
+- **告警中心上线（/admin/alerts）**
+  - monitor-svc 新增 `GET /api/v1/monitor/alerts`：6 模块实时报表 + 告警聚合
+  - 前端 `/admin/alerts` 页面：总体状态横幅 + 模块卡片 + 失败任务列表，每分钟自动刷新
+  - 告警规则：K线陈旧 / 因子值落后K线 / 24h任务失败 / 服务宕机 / 磁盘≥85%
+- **训练页因子加载问题修复**
+  - 主因定位：`page_size=500` 超 feature-svc 上限(100) → 422 → 列表空白
+  - 深层根因：`has_values` 标注拉全量行 → 15s+/60s 超时；改主键索引 EXISTS（~400 倍）
+  - 因子可选性与训练区间联动（value_start/value_end），无值因子禁选，默认区间近 3 个月
+- **K线数据管线改造（5m 例行化）**
+  - 盘后例行：17:35 拉 5m 并聚合日K落库（替代独立日K拉取），17:45 快照，19:00 因子（仅工作日）
+  - 聚合日K与官方对比一致；调度分层按"数据源自检"判定交易日（不硬编码星期几）
+  - 回补 2026-05-01 起 5m 空缺段 + market_snapshots 至 2026-07-24
+- **磁盘事故处置与工作区回滚重建**
+  - /data 写满 100% → PG WAL 失败崩溃循环；清 18.1GB 无引用镜像恢复，告警中心加磁盘监控
+  - 磁盘扩容致工作区快照回滚、当日改动全失——按记录全量重建；教训：项目急需 git 版本管理
+
+  涉及文件：monitor-svc/alerts.py, common/supabase_client.py, feature-svc/routers/factors.py, scripts/update_5m_klines.py, train-svc/feature_tasks.py, train-svc/celery_worker.py, data-svc/routers/admin.py, packages/api/src/*, apps/web/src/app/admin/alerts/page.tsx, apps/web/src/app/train/TrainPage.tsx
 
 ### 2026-07-15
 **状态**：Epic 3 因子库收尾完成（8/8），数据管理后台体验升级
