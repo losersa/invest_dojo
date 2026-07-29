@@ -230,7 +230,7 @@ rm -rf redis-data minio-data
 
 基础设施就位后：
 - **T-0.02 Python 服务骨架**：开始搭 FastAPI 微服务
-- **T-0.03 共享 Python 库**：Supabase/Redis/MinIO 客户端封装
+- **T-0.03 共享 Python 库**：PG/Redis/MinIO 客户端封装
 - **T-1.01 数据层迁移 SQL**：执行新表创建和现有表改造
 
 详见 [MVP Sprint 0 任务拆解](../docs/product/99_MVP_Sprint0.md)。

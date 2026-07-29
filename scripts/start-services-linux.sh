@@ -145,11 +145,14 @@ fi
 # ── 4. 前端 ──
 if [[ $SKIP_FRONTEND -eq 0 ]]; then
   log_step "4. 启动 Next.js 前端"
-  # 写 .env.local（从 infra/.env 取 anon key）
-  ANON_KEY_VAL="${ANON_KEY:-}"
+  # 写 .env.local（仅注入微服务地址；鉴权已改为自建方案，不再依赖 Supabase）
   cat > "$WEB/.env.local" <<EOF
-NEXT_PUBLIC_SUPABASE_URL=http://localhost:8000
-NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY_VAL
+NEXT_PUBLIC_DATA_SVC_URL=http://localhost:8006
+NEXT_PUBLIC_FEATURE_SVC_URL=http://localhost:8001
+NEXT_PUBLIC_TRAIN_SVC_URL=http://localhost:8002
+NEXT_PUBLIC_INFER_SVC_URL=http://localhost:8003
+NEXT_PUBLIC_BACKTEST_SVC_URL=http://localhost:8004
+NEXT_PUBLIC_MONITOR_SVC_URL=http://localhost:8005
 EOF
   log_ok "已写入 $WEB/.env.local"
   if command -v pnpm >/dev/null; then

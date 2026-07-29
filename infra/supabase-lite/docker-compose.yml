@@ -1,28 +1,26 @@
 # ═══════════════════════════════════════════════════════════════════
-# InvestDojo · 全栈基础设施（单一编排文件）
+# InvestDojo · 基础设施（单一编排文件）
 # ═══════════════════════════════════════════════════════════════════
 #
 # 这是 InvestDojo 基础设施的【唯一】docker compose 文件，
-# 一条 `docker compose up -d` 即可拉起全部 6 个容器：
+# 一条 `docker compose up -d` 即可拉起全部容器：
 #
-#   数据库与 API 层（Supabase 兼容三件套）
-#     - postgres   :5432  主库（Python 微服务已改为【直连】此库）
-#     - postgrest  :8000  REST API（仅前端 @supabase/ssr 使用）
-#     - gotrue     :9999  Auth（仅前端 @supabase/ssr 使用）
-#     - kong       :8000  API 网关（把 PostgREST + GoTrue 合到一个 URL）
-#
-#   缓存与对象存储
+#   数据库与缓存
+#     - postgres   :5432  主库（Python 微服务 + 自建鉴权 data-svc 直连）
 #     - redis      :6379  缓存 / Pub-Sub / Celery broker
 #     - minio      :9000  对象存储（模型/报告/Notebook）
 #     - minio-init 一次性  自动创建 bucket
 #
-# 注：Python 微服务不再经过 PostgREST / Kong，而是直连 postgres:5432，
-#     因此 `rest` / `auth` / `kong` 三个容器仅为【前端】服务。
+# 鉴权说明：
+#   已【移除】 Supabase 三件套（PostgREST / GoTrue / Kong）。
+#   鉴权改为自建轻量模块（common/auth.py + data-svc /api/v1/auth），
+#   用户表为 public.users，会话用 httpOnly Cookie(id_session) 中的 JWT。
+#   Python 微服务直连 postgres:5432，不经过任何 Supabase 组件。
 #
 # 启动：
 #   Windows PowerShell：.\scripts\up.ps1
 #   Mac / Linux bash：   ./scripts/up.sh
-#   （脚本会先就绪 .env、注入 role 密码，再 `docker compose up -d`）
+#   （脚本会先就绪 .env、注入密码，再 `docker compose up -d`）
 #
 # 数据目录：
 #   ./data/db        Postgres 数据（宿主机持久化，不进 git）
@@ -54,7 +52,7 @@ services:
     volumes:
       - ${DATA_DIR:-./data}/db:/var/lib/postgresql/data
       - ${DATA_DIR:-./data}/db-backup:/backup
-      # 初始化 SQL：建 auth/storage schema、roles、假的 auth.users 等
+      # 初始化 SQL：建扩展、schema、角色等（不再建 Supabase auth/storage）
       - ./init:/docker-entrypoint-initdb.d:ro
       # 自定义配置
       - ./config/postgresql.conf:/etc/postgresql/postgresql.conf:ro
@@ -69,104 +67,6 @@ services:
       retries: 10
       start_period: 30s
     shm_size: 256mb
-
-
-  # ─────────────────────────────────────────────────────────────────
-  # PostgREST · REST API
-  # 仅供【前端】@supabase/ssr 使用（GET /rest/v1/<table>）
-  # ─────────────────────────────────────────────────────────────────
-  rest:
-    image: postgrest/postgrest:v12.2.0
-    container_name: investdojo-rest
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
-      PGRST_DB_SCHEMAS: public,storage
-      PGRST_DB_ANON_ROLE: anon
-      PGRST_JWT_SECRET: ${JWT_SECRET:?must-be-set}
-      PGRST_JWT_SECRET_IS_BASE64: "false"
-      PGRST_DB_POOL: 20
-      PGRST_DB_POOL_TIMEOUT: 30
-      PGRST_DB_MAX_ROWS: 10000
-      PGRST_DB_EXTRA_SEARCH_PATH: public,extensions
-      PGRST_APP_SETTINGS_JWT_EXP: "${JWT_EXPIRY:-3600}"
-      # 允许前端用 anon key 做匿名读
-      PGRST_ROLE_CLAIM_KEY: .role
-
-
-  # ─────────────────────────────────────────────────────────────────
-  # GoTrue · Auth
-  # 仅供【前端】@supabase/ssr 使用（POST /auth/v1/signup 等）
-  # ─────────────────────────────────────────────────────────────────
-  auth:
-    image: supabase/gotrue:v2.163.2
-    container_name: investdojo-auth
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      GOTRUE_API_HOST: 0.0.0.0
-      GOTRUE_API_PORT: 9999
-      # 必填：外部访问地址（给 GoTrue 构造邮件里的确认链接等用）
-      API_EXTERNAL_URL: ${API_EXTERNAL_URL:-http://localhost:8000}
-      GOTRUE_API_EXTERNAL_URL: ${API_EXTERNAL_URL:-http://localhost:8000}
-      GOTRUE_DB_DRIVER: postgres
-      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres?search_path=auth
-      GOTRUE_SITE_URL: ${SITE_URL:-http://localhost:3000}
-      GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS:-http://localhost:3000}
-      GOTRUE_DISABLE_SIGNUP: "${DISABLE_SIGNUP:-false}"
-      GOTRUE_JWT_SECRET: ${JWT_SECRET}
-      GOTRUE_JWT_EXP: ${JWT_EXPIRY:-3600}
-      GOTRUE_JWT_ADMIN_ROLES: service_role
-      GOTRUE_JWT_AUD: authenticated
-      GOTRUE_JWT_ISSUER: ${API_EXTERNAL_URL:-http://localhost:8000}/auth/v1
-
-      # Email 策略
-      GOTRUE_MAILER_AUTOCONFIRM: "${ENABLE_EMAIL_AUTOCONFIRM:-true}"
-      GOTRUE_EXTERNAL_EMAIL_ENABLED: "${ENABLE_EMAIL_SIGNUP:-true}"
-      GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/v1/verify
-      GOTRUE_MAILER_URLPATHS_RECOVERY: /auth/v1/verify
-      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: /auth/v1/verify
-
-      # SMTP（本地开发默认用 autoconfirm，不需要真实发邮件）
-      # 这里给个合法的占位 host:port，让 GoTrue envconfig 能解析通过；
-      # 只要 GOTRUE_MAILER_AUTOCONFIRM=true，就不会真去连。
-      GOTRUE_SMTP_HOST: ${SMTP_HOST:-localhost}
-      GOTRUE_SMTP_PORT: ${SMTP_PORT:-2500}
-      GOTRUE_SMTP_USER: ${SMTP_USER:-noreply@investdojo.local}
-      GOTRUE_SMTP_PASS: ${SMTP_PASS:-no-password}
-      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL:-admin@investdojo.local}
-      GOTRUE_SMTP_SENDER_NAME: InvestDojo
-
-      # 匿名访客
-      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: "false"
-
-
-  # ─────────────────────────────────────────────────────────────────
-  # Kong · API 网关（仅前端用）
-  # 把 PostgREST + GoTrue 合并到同一个端口（:8000）
-  # ─────────────────────────────────────────────────────────────────
-  kong:
-    image: kong:3.4.2
-    container_name: investdojo-kong
-    restart: unless-stopped
-    depends_on:
-      - rest
-      - auth
-    ports:
-      - "0.0.0.0:${KONG_HTTP_PORT:-8000}:8000/tcp"
-    environment:
-      KONG_DATABASE: "off"
-      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
-      KONG_DNS_ORDER: LAST,A,CNAME
-      KONG_PLUGINS: bundled,cors
-      KONG_LOG_LEVEL: info
-    volumes:
-      - ./config/kong.yml:/var/lib/kong/kong.yml:ro
 
 
   # ─────────────────────────────────────────────────────────────────

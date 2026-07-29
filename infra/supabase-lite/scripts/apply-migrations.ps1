@@ -151,4 +151,4 @@ Write-Host "  public.* tables:      $pubTables  (expected ~42 + 17 partitions)"
 Write-Host "  with RLS enabled:     $rlsTables  (expected ~14)"
 
 Write-Host ""
-LogOk "Done. Next: transfer data from Supabase Cloud (see README)"
+LogOk "Done. Next: transfer data into the local Postgres (see README)"
