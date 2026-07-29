@@ -221,12 +221,12 @@ export default function OverviewPage() {
         <span className="ov-num">03 / 08</span>
         <div className="ov-label" style={{ marginBottom: "0.4rem" }}>SYSTEM ARCHITECTURE</div>
         <h2 style={{ fontSize: "clamp(1.8rem,4vw,3rem)", fontWeight: 700 }}>系统架构</h2>
-        <p style={{ fontSize: "0.9rem", color: "var(--ov-text-sec)", marginTop: "0.4rem" }}>Monorepo + 微服务 + 自托管 Supabase</p>
+        <p style={{ fontSize: "0.9rem", color: "var(--ov-text-sec)", marginTop: "0.4rem" }}>Monorepo + 微服务 + 自建鉴权</p>
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "2rem", maxWidth: 900 }}>
           {[
             { label: "Frontend", color: "var(--ov-blue)", chips: ["Next.js 15 :3000", "React 19", "Tailwind CSS 4", "@investdojo/api SDK"] },
             { label: "Python Microservices (FastAPI)", color: "var(--ov-green)", chips: ["data-svc :8006", "feature-svc :8001", "train-svc :8002", "infer-svc :8003", "backtest-svc :8004", "monitor-svc :8005"] },
-            { label: "Infrastructure (Docker)", color: "var(--ov-purple)", chips: ["PostgreSQL 15 :5432", "PostgREST", "GoTrue (Auth)", "Kong Gateway :18080", "Redis :6379", "MinIO :9000"] },
+            { label: "Infrastructure (Docker)", color: "var(--ov-purple)", chips: ["PostgreSQL 15 :5432", "自建鉴权 (data-svc)", "Redis :6379", "MinIO :9000"] },
           ].map((layer) => (
             <div key={layer.label} className="ov-layer" style={{ borderColor: layer.color, background: `${layer.color}08` }}>
               <div className="ov-label" style={{ color: layer.color, marginBottom: "0.6rem" }}>{layer.label}</div>
@@ -253,9 +253,9 @@ export default function OverviewPage() {
         <h2 style={{ fontSize: "clamp(1.8rem,4vw,3rem)", fontWeight: 700 }}>技术选型</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: "1rem", marginTop: "2rem" }}>
           {[
-            { t: "前端", items: ["Next.js 15 (App Router)", "React 19 + TypeScript", "Tailwind CSS 4 · Raycast 设计系统", "@supabase/ssr · Supabase Auth", "pnpm + Turborepo monorepo"] },
+            { t: "前端", items: ["Next.js 15 (App Router)", "React 19 + TypeScript", "Tailwind CSS 4 · Raycast 设计系统", "自建鉴权模块 (JWT + httpOnly Cookie)", "pnpm + Turborepo monorepo"] },
             { t: "后端", items: ["Python 3.12 + FastAPI", "6 个独立微服务", "Celery + Redis (异步任务)", "structlog 结构化日志", "uv 依赖管理"] },
-            { t: "数据库 & 存储", items: ["PostgreSQL 15 (Supabase Lite)", "42 张表 + 17 年分区表", "PostgREST API + RLS", "MinIO S3 对象存储"] },
+            { t: "数据库 & 存储", items: ["PostgreSQL 15 (直连)", "42 张表 + 17 年分区表", "RLS 策略", "MinIO S3 对象存储"] },
             { t: "量化引擎", items: ["DSL 因子公式语言（自研）", "Pandas 向量化计算引擎", "LightGBM 模型训练", "向量化回测引擎", "BaoStock + AKShare 数据源"] },
           ].map((s) => (
             <div key={s.t} className="ov-card">

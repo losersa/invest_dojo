@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import {
+  ensureUser,
+  onAuthChange,
+  type AuthUser,
+} from "@/lib/auth/auth";
 
-export interface CurrentUser {
-  id: string;
-  email: string;
-  displayName: string;
-  role: string; // "admin" | "staff" | "employee" | "user" | ""
-}
+export type CurrentUser = AuthUser;
 
 /** 是否为内部员工（admin / staff / employee） */
 export function isStaff(user: CurrentUser | null): boolean {
@@ -21,36 +20,12 @@ export function useCurrentUser() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        const meta = session.user.user_metadata ?? {};
-        setUser({
-          id: session.user.id,
-          email: session.user.email ?? "",
-          displayName: (meta.display_name as string) ?? "",
-          role: (meta.role as string) ?? "",
-        });
-      }
+    ensureUser().then((u) => {
+      setUser(u);
       setLoading(false);
     });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        const meta = session.user.user_metadata ?? {};
-        setUser({
-          id: session.user.id,
-          email: session.user.email ?? "",
-          displayName: (meta.display_name as string) ?? "",
-          role: (meta.role as string) ?? "",
-        });
-      } else {
-        setUser(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    const off = onAuthChange((u) => setUser(u));
+    return off;
   }, []);
 
   return { user, loading };

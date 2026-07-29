@@ -23,7 +23,7 @@ const LEVEL_STYLE: Record<string, string> = {
 const REPORT_LABELS: Record<string, string> = {
   redis: "Redis",
   minio: "MinIO",
-  supabase: "PostgreSQL",
+  postgres: "PostgreSQL",
   disk_pct: "磁盘已用%",
   disk_free_gb: "磁盘剩余GB",
   total: "总数",
@@ -84,7 +84,7 @@ function ModuleReport({ mod }: { mod: ModuleAlerts }) {
       {mod.module === "infra" && (
         <div className="flex gap-4 text-xs">
           {Object.entries(r)
-            .filter(([k]) => ["redis", "minio", "supabase"].includes(k))
+            .filter(([k]) => ["redis", "minio", "postgres"].includes(k))
             .map(([k, v]) => (
               <span key={k} className="flex items-center gap-1.5 text-zinc-400">
                 <span

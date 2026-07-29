@@ -5,34 +5,45 @@
 // Near-black bg + elevated cards + blue accent
 // ============================================================
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import type { User } from "@supabase/supabase-js";
+import { ensureUser, logout, type AuthUser } from "@/lib/auth/auth";
 
-interface ProfilePageProps {
-  user: User;
-}
-
-export function ProfilePage({ user }: ProfilePageProps) {
+export function ProfilePage() {
   const router = useRouter();
-  const supabase = createClient();
-  const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
 
-  const displayName =
-    user.user_metadata?.display_name ??
-    user.user_metadata?.full_name ??
-    user.email?.split("@")[0] ??
-    "投资者";
+  useEffect(() => {
+    ensureUser().then((u) => {
+      if (!u) {
+        router.replace("/login?redirect=/profile");
+        return;
+      }
+      setUser(u);
+      setLoading(false);
+    });
+  }, [router]);
 
-  const avatarUrl = user.user_metadata?.avatar_url ?? user.user_metadata?.picture ?? null;
-  const provider = user.app_metadata?.provider ?? "email";
-  const createdAt = new Date(user.created_at).toLocaleDateString("zh-CN");
+  if (loading || !user) {
+    return (
+      <div className="min-h-screen bg-rc-bg flex items-center justify-center text-rc-text-muted">
+        加载中…
+      </div>
+    );
+  }
+
+  const displayName = user.displayName || user.email.split("@")[0] || "投资者";
+  const provider = user.provider || "email";
+  const createdAt = user.createdAt
+    ? new Date(user.createdAt).toLocaleDateString("zh-CN")
+    : "—";
 
   const handleSignOut = async () => {
-    setLoading(true);
-    await supabase.auth.signOut();
+    setSigningOut(true);
+    await logout();
     router.push("/");
     router.refresh();
   };
@@ -48,10 +59,10 @@ export function ProfilePage({ user }: ProfilePageProps) {
           </div>
           <button
             onClick={handleSignOut}
-            disabled={loading}
+            disabled={signingOut}
             className="text-[14px] text-rc-text-muted hover:text-white transition-opacity duration-150 hover:opacity-60 tracking-[0.2px]"
           >
-            {loading ? "退出中..." : "退出登录"}
+            {signingOut ? "退出中..." : "退出登录"}
           </button>
         </div>
       </nav>
@@ -60,13 +71,9 @@ export function ProfilePage({ user }: ProfilePageProps) {
         {/* User Card */}
         <section className="rc-card-elevated p-8">
           <div className="flex items-start gap-5">
-            {avatarUrl ? (
-              <img src={avatarUrl} alt={displayName} className="w-20 h-20 rounded-[12px] border border-rc-border-subtle" />
-            ) : (
-              <div className="w-20 h-20 rounded-[12px] bg-rc-blue flex items-center justify-center text-[28px] font-semibold text-rc-btn-fg">
-                {displayName.charAt(0).toUpperCase()}
-              </div>
-            )}
+            <div className="w-20 h-20 rounded-[12px] bg-rc-blue flex items-center justify-center text-[28px] font-semibold text-rc-btn-fg">
+              {displayName.charAt(0).toUpperCase()}
+            </div>
             <div className="flex-1 min-w-0">
               <h2 className="text-section-heading text-white">{displayName}</h2>
               <p className="text-caption text-rc-text-secondary mt-1">{user.email}</p>
@@ -131,7 +138,7 @@ export function ProfilePage({ user }: ProfilePageProps) {
               { label: "用户 ID", value: <span className="text-[12px] font-rc-mono text-rc-text-muted">{user.id.slice(0, 8)}...</span> },
               { label: "邮箱", value: <span className="text-[14px] text-white tracking-[0.2px]">{user.email}</span> },
               { label: "登录方式", value: <span className="rc-badge text-[12px]">{provider.toUpperCase()}</span> },
-              { label: "套餐", value: <span className="rc-badge text-[12px]">FREE</span> },
+              { label: "角色", value: <span className="rc-badge text-[12px]">{user.role.toUpperCase()}</span> },
               { label: "注册时间", value: <span className="text-[14px] text-white tracking-[0.2px]">{createdAt}</span> },
             ].map(({ label, value }) => (
               <div key={label} className="flex items-center justify-between px-6 py-4">

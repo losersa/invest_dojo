@@ -1,14 +1,13 @@
 // ============================================================
 // Next.js Middleware
 // 1) 同源代理：浏览器只能访问同源的 Web(:3000)，无法直接访问
-//    devcloud 宿主机上的微服务(localhost:8001~8006)与 Kong(:8000)。
-//    前端把 http://localhost:<port>/... 改写成同源的 /svc/<name>/...
-//    或 /sb/...，由本中间件转发到真实上游。
-// 2) Supabase Auth Session 续期（原有逻辑）。
+//    devcloud 宿主机上的微服务(localhost:8001~8006)。前端把请求改写为
+//    /svc/<name>/...，由本中间件转发到真实上游。
+// 2) 自建鉴权：基于 id_session Cookie 中的 JWT 做路由保护（替代原 Supabase）。
 // ============================================================
 
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { verifyJwt } from "@/lib/auth/jwt";
 
 // 同源前缀 -> 上游 baseURL
 const TARGETS: Record<string, string> = {
@@ -18,7 +17,6 @@ const TARGETS: Record<string, string> = {
   "/svc/infer": "http://localhost:8003",
   "/svc/backtest": "http://localhost:8004",
   "/svc/monitor": "http://localhost:8005",
-  "/sb": "http://localhost:8000",
 };
 
 function resolvePrefix(pathname: string): string | undefined {
@@ -71,58 +69,39 @@ export async function tryProxy(request: NextRequest): Promise<NextResponse | nul
   });
 }
 
+const SESSION_COOKIE = "id_session";
+const PROTECTED_PATHS = ["/profile", "/settings"];
+
 export async function middleware(request: NextRequest) {
   // 1) 同源代理优先
   const proxied = await tryProxy(request);
   if (proxied) return proxied;
 
-  // 2) Supabase Auth 续期
-  let supabaseResponse = NextResponse.next({ request });
+  const { pathname } = request.nextUrl;
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          );
-          supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options),
-          );
-        },
-      },
-    },
+  // 2) 鉴权：校验 id_session Cookie 中的 JWT
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const claims = token ? await verifyJwt(token) : null;
+  const isAuthed = !!claims?.sub;
+
+  const isProtected = PROTECTED_PATHS.some(
+    (p) => pathname === p || pathname.startsWith(p + "/"),
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const protectedPaths = ["/profile", "/settings"];
-  const isProtected = protectedPaths.some((path) =>
-    request.nextUrl.pathname.startsWith(path),
-  );
-
-  if (isProtected && !user) {
+  if (isProtected && !isAuthed) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("redirect", request.nextUrl.pathname);
+    url.searchParams.set("redirect", pathname);
     return NextResponse.redirect(url);
   }
 
-  if (user && request.nextUrl.pathname === "/login") {
+  if (isAuthed && pathname === "/login") {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);
   }
 
-  return supabaseResponse;
+  return NextResponse.next();
 }
 
 export const config = {

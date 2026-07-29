@@ -1,12 +1,11 @@
 // ── 浏览器端同源代理 ──────────────────────────────
-// devcloud 上微服务跑在宿主机 localhost:800x / Kong:8000，
+// devcloud 上微服务跑在宿主机 localhost:800x，
 // 但浏览器（远端）无法直接访问宿主机的 localhost，只能访问同源的 Web(:3000)。
-// 因此浏览器内把 http://localhost:<port>/... 改写成 /svc/<name>/... 或 /sb/... 同源路径，
+// 因此浏览器内把 http://localhost:<port>/... 改写成 /svc/<name>/... 同源路径，
 // 由 middleware.ts 转发到真实服务。
 // 服务端（Node）仍直连 localhost，无需代理。
 
 const SVC_PROXY: Record<string, string> = {
-  "8000": "/sb", // Supabase (Kong)
   "8001": "/svc/feature",
   "8002": "/svc/train",
   "8003": "/svc/infer",

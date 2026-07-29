@@ -8,7 +8,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { login, register } from "@/lib/auth/auth";
 import { MainNav } from "@/components/MainNav";
 
 type AuthMode = "login" | "register";
@@ -31,20 +31,18 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const supabase = createClient();
-
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setError(error.message === "Invalid login credentials" ? "邮箱或密码错误" : error.message);
+    try {
+      await login(email, password);
+      router.push(redirect);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "登录失败");
       setLoading(false);
-      return;
     }
-    router.push(redirect);
-    router.refresh();
   };
 
   const handleEmailRegister = async (e: React.FormEvent) => {
@@ -56,36 +54,18 @@ export function LoginPage() {
       setLoading(false);
       return;
     }
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { display_name: nickname || email.split("@")[0] } },
-    });
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-      return;
-    }
-    if (data.session) {
+    try {
+      await register(email, password, nickname || undefined);
       router.push(redirect);
       router.refresh();
-      return;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "注册失败");
+      setLoading(false);
     }
-    setSuccess("注册成功！请查收验证邮件。");
-    setLoading(false);
   };
 
   const handleOAuthLogin = async (provider: "github" | "google") => {
-    if (!OAUTH_PROVIDERS[provider]) {
-      setError(`${provider === "github" ? "GitHub" : "Google"} 登录尚未配置，请先使用邮箱登录`);
-      return;
-    }
-    setError(null);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: `${window.location.origin}/auth/callback?redirect=${redirect}` },
-    });
-    if (error) setError(error.message);
+    setError(`${provider === "github" ? "GitHub" : "Google"} 登录尚未启用，请使用邮箱登录`);
   };
 
   return (

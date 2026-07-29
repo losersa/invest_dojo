@@ -12,7 +12,7 @@ import { useSimulationStore } from "@/stores/simulation";
 import { KLineChart, type TimeFrame } from "@investdojo/ui/charts";
 import { OrderPanel, PositionList, NewsTimeline, TradeHistory } from "@investdojo/ui/trading";
 import { formatMoney, formatPercent, getPriceColor, cn } from "@investdojo/ui";
-import { loadScenarioFromSupabase, loadMinuteKlines, has5minData, aggregateMinuteKlines } from "@/lib/supabase-loader";
+import { loadScenarioData, loadMinuteKlines, has5minData, aggregateMinuteKlines } from "@/lib/data-loader";
 import { generateMockScenario } from "@/lib/mock-data";
 import type { KLine } from "@investdojo/core";
 
@@ -95,12 +95,12 @@ export function SimulationPlayground({
     }
   }, [stepSize, scenarioId, selectedSymbol, has5min, minuteKlinesMap]);
 
-  // 加载场景数据（Supabase 优先，mock 降级）
+  // 加载场景数据（data-svc 优先，mock 降级）
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
-      const supabaseData = await loadScenarioFromSupabase(scenarioId);
+      const supabaseData = await loadScenarioData(scenarioId);
       if (cancelled) return;
 
       if (supabaseData) {

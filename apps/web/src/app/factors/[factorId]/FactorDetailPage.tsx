@@ -17,7 +17,7 @@ import {
 import { sdk, ensureUserId } from "@/lib/sdk";
 import { MainNav } from "@/components/MainNav";
 import { useFavoriteFactors } from "@/hooks/useFavoriteFactors";
-import { createClient } from "@/lib/supabase/client";
+import { ensureUser } from "@/lib/auth/auth";
 
 // 默认取最近有数据的区间
 const DEFAULT_START = "2026-03-01";
@@ -356,10 +356,7 @@ function FactorActions({ factorId, owner, visibility, onPublished }: {
 
   // 获取当前登录用户 ID
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setCurrentUserId(user?.id ?? null);
-    });
+    ensureUser().then((u) => setCurrentUserId(u?.id ?? null));
   }, []);
 
   // 是否是因子所有者（只有所有者才能编辑/删除/发布）

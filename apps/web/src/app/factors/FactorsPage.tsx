@@ -11,7 +11,7 @@ import { ApiError, type Factor, type FactorCategory, type FactorCategoryCount } 
 import { sdk, ensureUserId } from "@/lib/sdk";
 import { MainNav } from "@/components/MainNav";
 import { useFavoriteFactors } from "@/hooks/useFavoriteFactors";
-import { createClient } from "@/lib/supabase/client";
+import { ensureUser } from "@/lib/auth/auth";
 
 const PAGE_SIZE = 24;
 
@@ -46,14 +46,7 @@ export function FactorsPage() {
   // 当前用户
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setCurrentUserId(session?.user?.id ?? null);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setCurrentUserId(session?.user?.id ?? null);
-    });
-    return () => subscription.unsubscribe();
+    ensureUser().then((u) => setCurrentUserId(u?.id ?? null));
   }, []);
 
   // 数据

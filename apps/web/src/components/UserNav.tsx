@@ -8,30 +8,27 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import type { User } from "@supabase/supabase-js";
+import {
+  ensureUser,
+  onAuthChange,
+  logout,
+  type AuthUser,
+} from "@/lib/auth/auth";
 
 export function UserNav() {
   const router = useRouter();
-  const supabase = createClient();
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
+    ensureUser().then((u) => {
+      setUser(u);
       setLoading(false);
-    };
-    getUser();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
     });
-
-    return () => subscription.unsubscribe();
+    const off = onAuthChange((u) => setUser(u));
+    return off;
   }, []);
 
   useEffect(() => {
@@ -45,7 +42,7 @@ export function UserNav() {
   }, []);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await logout();
     setMenuOpen(false);
     router.push("/");
     router.refresh();
@@ -64,9 +61,8 @@ export function UserNav() {
   }
 
   const displayName =
-    user.user_metadata?.display_name ??
-    user.user_metadata?.full_name ??
-    user.email?.split("@")[0] ??
+    user.displayName ||
+    user.email?.split("@")[0] ||
     "U";
 
   const initial = displayName.charAt(0).toUpperCase();

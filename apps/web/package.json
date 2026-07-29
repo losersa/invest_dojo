@@ -13,8 +13,6 @@
     "@investdojo/api": "workspace:*",
     "@investdojo/core": "workspace:*",
     "@investdojo/ui": "workspace:*",
-    "@supabase/ssr": "^0.10.2",
-    "@supabase/supabase-js": "^2.49.0",
     "@tanstack/react-query": "^5.62.0",
     "clsx": "^2.1.0",
     "lightweight-charts": "^4.2.0",

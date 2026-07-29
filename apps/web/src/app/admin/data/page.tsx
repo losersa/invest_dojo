@@ -15,7 +15,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MainNav } from "@/components/MainNav";
-import { createClient } from "@/lib/supabase/client";
+import { ensureUser } from "@/lib/auth/auth";
 
 // 同源代理（middleware 转发 data-svc）——远程浏览器里 localhost 指向用户自己电脑，
 // 裸 fetch localhost:8006 必然失败（排障手册 ## 0），一律走 /svc/data。
@@ -88,12 +88,10 @@ export default function AdminDataPage() {
 
   // 获取用户信息
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setUserId(user.id);
-        const role = (user.user_metadata?.role as string) || "staff";
-        setUserRole(role);
+    ensureUser().then((u) => {
+      if (u) {
+        setUserId(u.id);
+        setUserRole(u.role || "staff");
       } else {
         setUnauthorized(true);
       }
@@ -777,7 +775,11 @@ function RoutineSection({ userId, userRole }: { userId: string; userRole: string
   })();
 
   const runMap = new Map<string, RoutineRun>();
-  for (const r of runs) runMap.set(`${r.task_name}|${r.run_date}`, r);
+  // 同一天多次运行时保留最新一次（接口已按 run_date.desc,finished_at.desc 排序）
+  for (const r of runs) {
+    const k = `${r.task_name}|${r.run_date}`;
+    if (!runMap.has(k)) runMap.set(k, r);
+  }
   const metricMap = new Map<string, DailyMetric>();
   for (const m of metrics) metricMap.set(`${m.metric}|${m.date}`, m);
 
@@ -995,21 +997,29 @@ function RoutineSection({ userId, userRole }: { userId: string; userRole: string
 // 例行化任务：celery beat 调度的任务卡片（依赖检查 / 日志 / 源码 / 手动触发）
 // ──────────────────────────────────────────
 
+interface RunDetail {
+  precheck?: Array<{ name: string; ok: boolean; detail?: string; hint?: string | null }>;
+  summary?: string[];
+  errors?: Array<Record<string, unknown>>;
+  log_tail?: string;
+  error?: string;
+  records_written?: number;
+  xsec_records?: number;
+  reason?: string;
+  // 运行参数（每次运行单独落库，回放历史日志时可核对当次口径）
+  days?: number;
+  start?: string;
+  end?: string;
+  date_str?: string;
+  cmd?: string;
+}
+
 interface RoutineLastRun {
   status: "success" | "failed" | "skipped";
   run_date: string;
   duration_sec?: number;
   finished_at?: string;
-  detail?: {
-    precheck?: Array<{ name: string; ok: boolean; detail?: string; hint?: string | null }>;
-    summary?: string[];
-    errors?: Array<Record<string, unknown>>;
-    log_tail?: string;
-    error?: string;
-    records_written?: number;
-    xsec_records?: number;
-    reason?: string;
-  };
+  detail?: RunDetail;
 }
 
 interface RoutineTaskItem {
@@ -1036,12 +1046,33 @@ function RoutineTasksSection({ userId, userRole }: { userId: string; userRole: s
   const [sourceCache, setSourceCache] = useState<Record<string, { content: string; truncated: boolean }>>({});
   const [triggering, setTriggering] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  // 单任务历史运行记录（日志页签按天/按次回放，每次运行含当次参数+日志）
+  const [history, setHistory] = useState<Record<string, RoutineLastRun[]>>({});
+  const [selRun, setSelRun] = useState<Record<string, number>>({});
   const headers = { "X-User-Id": userId, "X-User-Role": userRole };
 
   const load = useCallback(async () => {
     try {
       const resp = await fetch(`${ROUTINE_API}/tasks`, { headers });
       if (resp.ok) setItems((await resp.json()).data ?? []);
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, userRole]);
+
+  // 打开「日志」页签时拉取该任务近 60 天运行记录（新→旧）
+  const loadHistory = useCallback(async (name: string) => {
+    try {
+      const resp = await fetch(
+        `${ROUTINE_API}/runs?days=60&task_name=${encodeURIComponent(name)}`,
+        { headers },
+      );
+      if (resp.ok) {
+        const j = await resp.json();
+        setHistory((prev) => ({ ...prev, [name]: j.data ?? [] }));
+        setSelRun((prev) => ({ ...prev, [name]: 0 }));
+      }
     } catch {
       // ignore
     }
@@ -1063,7 +1094,10 @@ function RoutineTasksSection({ userId, userRole }: { userId: string; userRole: s
         headers,
       });
       setMsg(resp.ok ? `已触发「${t.label}」，稍后自动刷新状态` : `触发失败 HTTP ${resp.status}`);
-      setTimeout(load, 8000);
+      setTimeout(() => {
+        void load();
+        void loadHistory(t.name);
+      }, 8000);
     } catch {
       setMsg("触发失败（网络错误）");
     } finally {
@@ -1102,6 +1136,11 @@ function RoutineTasksSection({ userId, userRole }: { userId: string; userRole: s
           const last = t.last_run;
           const st = last ? LAST_STATUS_STYLE[last.status] : null;
           const isOpen = expanded === t.name;
+          // 日志页签：选中某一次历史运行（默认最新一次=last_run 口径一致）
+          const runs = history[t.name];
+          const sel = Math.min(selRun[t.name] ?? 0, Math.max((runs?.length ?? 1) - 1, 0));
+          const cur: RoutineLastRun | null | undefined =
+            runs && runs.length > 0 ? runs[sel] : last;
           return (
             <div key={t.name} className="rc-card p-5">
               <div className="flex items-center justify-between gap-3">
@@ -1147,6 +1186,7 @@ function RoutineTasksSection({ userId, userRole }: { userId: string; userRole: s
                       else {
                         setExpanded(t.name);
                         setTab("log");
+                        void loadHistory(t.name);
                       }
                     }}
                     className="px-3 py-1.5 rounded-[6px] text-[12px] bg-rc-surface-card border border-rc-border-subtle text-rc-text-secondary hover:text-white transition"
@@ -1171,60 +1211,133 @@ function RoutineTasksSection({ userId, userRole }: { userId: string; userRole: s
               {isOpen && (
                 <div className="mt-4 border-t border-rc-border-subtle pt-4">
                   {tab === "log" ? (
-                    last?.detail ? (
-                      <div className="space-y-3">
-                        {/* 依赖检查结果 */}
-                        {last.detail.precheck && (
-                          <div>
-                            <div className="text-[11px] text-rc-text-dim mb-1.5">依赖检查</div>
-                            <div className="space-y-1">
-                              {last.detail.precheck.map((c, i) => (
-                                <div key={i} className="flex items-start gap-2 text-[11px]">
-                                  <span className={c.ok ? "text-emerald-400" : "text-red-400"}>
-                                    {c.ok ? "✓" : "✗"}
-                                  </span>
-                                  <span className="text-rc-text-secondary font-rc-mono">{c.name}</span>
-                                  <span className="text-rc-text-dim">{c.detail}</span>
-                                  {c.hint && <span className="text-amber-400/90">{c.hint}</span>}
+                    <div className="space-y-3">
+                      {/* 历史运行选择：每次运行（参数+日志）单独落库，可按天/按次回放 */}
+                      {runs === undefined ? (
+                        <div className="text-[11px] text-rc-text-dim">加载运行记录中…</div>
+                      ) : runs.length > 0 ? (
+                        <div>
+                          <div className="text-[11px] text-rc-text-dim mb-1.5">
+                            运行记录（近 60 天，点击查看对应一次的参数与日志）
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {runs.map((r, i) => {
+                              const rs = LAST_STATUS_STYLE[r.status];
+                              const sameDay = runs.some((x) => x !== r && x.run_date === r.run_date);
+                              return (
+                                <button
+                                  key={`${r.run_date}|${r.finished_at ?? i}`}
+                                  onClick={() => setSelRun((prev) => ({ ...prev, [t.name]: i }))}
+                                  className={`px-2 py-1 rounded-[6px] text-[10px] font-rc-mono border transition ${
+                                    i === sel
+                                      ? "border-rc-blue/50 bg-rc-blue/15 text-white"
+                                      : "border-rc-border-subtle bg-rc-surface-card text-rc-text-dim hover:text-white"
+                                  }`}
+                                >
+                                  {r.run_date.slice(5)}
+                                  {sameDay && r.finished_at ? ` ${r.finished_at.slice(11, 16)}` : ""}{" "}
+                                  {rs?.text.split(" ")[0] ?? r.status}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+                      {cur ? (
+                        <>
+                          {/* 当次运行状态 / 完成时间 / 耗时 */}
+                          <div className="flex items-center gap-2 flex-wrap text-[11px] font-rc-mono">
+                            <span className={`px-2 py-0.5 rounded-full ${LAST_STATUS_STYLE[cur.status]?.cls ?? ""}`}>
+                              {LAST_STATUS_STYLE[cur.status]?.text ?? cur.status}
+                            </span>
+                            {cur.finished_at && (
+                              <span className="text-rc-text-dim">
+                                {cur.finished_at.slice(0, 16).replace("T", " ")}
+                              </span>
+                            )}
+                            {cur.duration_sec != null && (
+                              <span className="text-rc-text-dim">{cur.duration_sec}s</span>
+                            )}
+                          </div>
+                          {/* 当次运行参数（核对当次口径） */}
+                          {cur.detail &&
+                            (cur.detail.cmd ||
+                              cur.detail.days != null ||
+                              cur.detail.start ||
+                              cur.detail.end ||
+                              cur.detail.date_str) && (
+                              <div className="text-[11px] font-rc-mono text-rc-text-dim">
+                                参数：
+                                {cur.detail.cmd ??
+                                  [
+                                    cur.detail.days != null && `days=${cur.detail.days}`,
+                                    cur.detail.date_str && `date=${cur.detail.date_str}`,
+                                    cur.detail.start && `start=${cur.detail.start}`,
+                                    cur.detail.end && `end=${cur.detail.end}`,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                              </div>
+                            )}
+                          {cur.detail ? (
+                            <>
+                              {/* 依赖检查结果 */}
+                              {cur.detail.precheck && (
+                                <div>
+                                  <div className="text-[11px] text-rc-text-dim mb-1.5">依赖检查</div>
+                                  <div className="space-y-1">
+                                    {cur.detail.precheck.map((c, i) => (
+                                      <div key={i} className="flex items-start gap-2 text-[11px]">
+                                        <span className={c.ok ? "text-emerald-400" : "text-red-400"}>
+                                          {c.ok ? "✓" : "✗"}
+                                        </span>
+                                        <span className="text-rc-text-secondary font-rc-mono">{c.name}</span>
+                                        <span className="text-rc-text-dim">{c.detail}</span>
+                                        {c.hint && <span className="text-amber-400/90">{c.hint}</span>}
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {/* 摘要/错误 */}
-                        {(last.detail.records_written != null || last.detail.xsec_records != null) && (
-                          <div className="text-[11px] text-rc-text-secondary font-rc-mono">
-                            records_written={last.detail.records_written ?? "—"}
-                            {last.detail.xsec_records != null && ` · xsec=${last.detail.xsec_records}`}
-                          </div>
-                        )}
-                        {last.detail.summary && last.detail.summary.length > 0 && (
-                          <pre className="text-[11px] font-rc-mono text-rc-text-muted whitespace-pre-wrap">
-                            {last.detail.summary.join("\n")}
-                          </pre>
-                        )}
-                        {last.detail.error && (
-                          <pre className="text-[11px] font-rc-mono text-red-300 whitespace-pre-wrap">
-                            {last.detail.error}
-                          </pre>
-                        )}
-                        {last.detail.errors && last.detail.errors.length > 0 && (
-                          <pre className="text-[11px] font-rc-mono text-red-300/80 whitespace-pre-wrap max-h-40 overflow-auto">
-                            {JSON.stringify(last.detail.errors, null, 1).slice(0, 3000)}
-                          </pre>
-                        )}
-                        {last.detail.log_tail && (
-                          <div>
-                            <div className="text-[11px] text-rc-text-dim mb-1.5">运行日志</div>
-                            <pre className="text-[10px] font-rc-mono text-zinc-400 whitespace-pre-wrap max-h-64 overflow-auto bg-black/40 rounded p-3">
-                              {last.detail.log_tail}
-                            </pre>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="text-[12px] text-rc-text-dim py-3">暂无运行记录</div>
-                    )
+                              )}
+                              {/* 摘要/错误 */}
+                              {(cur.detail.records_written != null || cur.detail.xsec_records != null) && (
+                                <div className="text-[11px] text-rc-text-secondary font-rc-mono">
+                                  records_written={cur.detail.records_written ?? "—"}
+                                  {cur.detail.xsec_records != null && ` · xsec=${cur.detail.xsec_records}`}
+                                </div>
+                              )}
+                              {cur.detail.summary && cur.detail.summary.length > 0 && (
+                                <pre className="text-[11px] font-rc-mono text-rc-text-muted whitespace-pre-wrap">
+                                  {cur.detail.summary.join("\n")}
+                                </pre>
+                              )}
+                              {cur.detail.error && (
+                                <pre className="text-[11px] font-rc-mono text-red-300 whitespace-pre-wrap">
+                                  {cur.detail.error}
+                                </pre>
+                              )}
+                              {cur.detail.errors && cur.detail.errors.length > 0 && (
+                                <pre className="text-[11px] font-rc-mono text-red-300/80 whitespace-pre-wrap max-h-40 overflow-auto">
+                                  {JSON.stringify(cur.detail.errors, null, 1).slice(0, 3000)}
+                                </pre>
+                              )}
+                              {cur.detail.log_tail && (
+                                <div>
+                                  <div className="text-[11px] text-rc-text-dim mb-1.5">运行日志</div>
+                                  <pre className="text-[10px] font-rc-mono text-zinc-400 whitespace-pre-wrap max-h-64 overflow-auto bg-black/40 rounded p-3">
+                                    {cur.detail.log_tail}
+                                  </pre>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div className="text-[12px] text-rc-text-dim py-3">该次运行无详情</div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="text-[12px] text-rc-text-dim py-3">暂无运行记录</div>
+                      )}
+                    </div>
                   ) : sourceCache[t.source] ? (
                     <div>
                       <div className="text-[11px] text-rc-text-dim mb-1.5 font-rc-mono">

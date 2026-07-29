@@ -16,6 +16,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/factors", label: "因子库" },
   { href: "/factors/explorer", label: "因子浏览器" },
   { href: "/train", label: "模型训练" },
+  { href: "/backtest", label: "模型回测" },
   { href: "/simulation", label: "历史模拟" },
   { href: "/overview", label: "项目全景" },
   { href: "/sdk-demo", label: "API 测试", staffOnly: true },

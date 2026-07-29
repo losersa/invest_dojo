@@ -292,6 +292,8 @@ body {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   font-feature-settings: 'calt', 'kern', 'liga', 'ss03';
   width: 100%;
+  /* 暗色背景下让原生日期选择器的日历图标可见（默认图标偏黑、与黑底融为一体） */
+  color-scheme: dark;
 }
 .rc-input::placeholder { color: var(--color-rc-text-dim); }
 .rc-input:focus {
